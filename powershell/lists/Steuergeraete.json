@@ -1,0 +1,114 @@
+{
+  "Title": "Steuergeraete",
+  "Description": "Zentrale Liste für Teiletracking und Steuergeräte",
+  "Fields": [
+    {
+      "InternalName": "DeviceKey",
+      "DisplayName": "DeviceKey",
+      "Type": "Text",
+      "Required": true
+    },
+    {
+      "InternalName": "PartNumber",
+      "DisplayName": "Teilenummer",
+      "Type": "Text",
+      "Required": true
+    },
+    {
+      "InternalName": "SerialNumber",
+      "DisplayName": "Seriennummer",
+      "Type": "Text",
+      "Required": true
+    },
+    {
+      "InternalName": "Derivat",
+      "DisplayName": "Derivat",
+      "Type": "Text",
+      "Required": true
+    },
+    {
+      "InternalName": "IStufe",
+      "DisplayName": "I-Stufe",
+      "Type": "Text",
+      "Required": true
+    },
+    {
+      "InternalName": "LabelPartNumber",
+      "DisplayName": "Label Teilenummer",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "QRPartNumber",
+      "DisplayName": "QR Teilenummer",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "LabelSerialNumber",
+      "DisplayName": "Label Seriennummer",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "QRSerialNumber",
+      "DisplayName": "QR Seriennummer",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "ValidationStatus",
+      "DisplayName": "Prüfstatus",
+      "Type": "Choice",
+      "Required": true,
+      "Choices": [
+        "OK",
+        "DOUBLE_DERIVATIVE",
+        "LABEL_QR_MISMATCH",
+        "DUPLICATE"
+      ]
+    },
+    {
+      "InternalName": "DoppelDerivat",
+      "DisplayName": "Doppelderivat",
+      "Type": "Boolean",
+      "Required": true
+    },
+    {
+      "InternalName": "Kommentar",
+      "DisplayName": "Kommentar",
+      "Type": "Note",
+      "Required": false
+    },
+    {
+      "InternalName": "AssignmentKey",
+      "DisplayName": "AssignmentKey",
+      "Type": "Text",
+      "Required": true
+    },
+    {
+      "InternalName": "LabelHardware",
+      "DisplayName": "Label Hardware",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "QRHardware",
+      "DisplayName": "QR Hardware",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "LabelSoftware",
+      "DisplayName": "Label Software",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "QRSoftware",
+      "DisplayName": "QR Software",
+      "Type": "Text",
+      "Required": false
+    }
+  ]
+}

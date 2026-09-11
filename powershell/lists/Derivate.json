@@ -1,0 +1,1 @@
+{"Title":"Derivate","Description":"Verfügbare Fahrzeugderivate für das Teiletracking","Fields":[{"InternalName":"DerivatCode","DisplayName":"Derivat","Type":"Text","Required":true},{"InternalName":"Beschreibung","DisplayName":"Beschreibung","Type":"Text","Required":false},{"InternalName":"Aktiv","DisplayName":"Aktiv","Type":"Boolean","Required":true}]}

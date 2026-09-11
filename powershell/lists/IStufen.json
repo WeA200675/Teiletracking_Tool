@@ -1,0 +1,1 @@
+{"Title":"IStufen","Description":"Verfügbare I-Stufen für das Teiletracking","Fields":[{"InternalName":"IStufeCode","DisplayName":"I-Stufe","Type":"Text","Required":true},{"InternalName":"Beschreibung","DisplayName":"Beschreibung","Type":"Text","Required":false},{"InternalName":"Aktiv","DisplayName":"Aktiv","Type":"Boolean","Required":true}]}
