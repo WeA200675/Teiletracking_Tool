@@ -1,0 +1,12 @@
+{
+  "Derivate": [
+    { "DerivatCode": "G70", "Aktiv": true },
+    { "DerivatCode": "G60", "Aktiv": true },
+    { "DerivatCode": "G30", "Aktiv": false }
+  ],
+  "IStufen": [
+    { "IStufeCode": "S15A-26-03-500", "Aktiv": true },
+    { "IStufeCode": "S15A-26-07-500", "Aktiv": true },
+    { "IStufeCode": "S15A-25-11-400", "Aktiv": false }
+  ]
+}

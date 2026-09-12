@@ -1,0 +1,12 @@
+{
+  "Steuergeraete": [
+    {
+      "PartNumber": "1234567",
+      "SerialNumber": "SN001",
+      "Derivat": "G70",
+      "IStufe": "S15A-26-03-500",
+      "DeviceKey": "1234567|SN001",
+      "AssignmentKey": "1234567|SN001|G70|S15A-26-03-500"
+    }
+  ]
+}
