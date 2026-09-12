@@ -51,6 +51,41 @@ function Invoke-TrackingImport {
 }
 
 function Invoke-TrackingImportValidated {
- param([string]$LabelString,[string]$QRString,[string]$Derivat,[string]$IStufe,[switch]$DryRun) $Label=ConvertFrom-TrackingString $LabelString; $QR=ConvertFrom-TrackingString $QRString; $Errors=@(); $Errors+=Test-TrackingRequiredFields -Label $Label -Derivat $Derivat -IStufe $IStufe; $Errors+=Test-QRRequiredFields -QR $QR; if($Errors.Count -gt 0){throw ("Eingabe ungültig: " + ($Errors -join ", "))}; Invoke-TrackingImport -LabelString $LabelString -QRString $QRString -Derivat $Derivat -IStufe $IStufe -DryRun:$DryRun 
+    param(
+        [string]$LabelString,
+        [string]$QRString,
+        [string]$Derivat,
+        [string]$IStufe,
+        [switch]$DryRun
+    )
+
+    $Label = ConvertFrom-TrackingString $LabelString
+    $QR = ConvertFrom-TrackingString $QRString
+
+    $Errors = @()
+    $Errors += Test-TrackingRequiredFields -Label $Label -Derivat $Derivat -IStufe $IStufe
+    $Errors += Test-QRRequiredFields -QR $QR
+
+    if ($Errors.Count -eq 0) {
+        $Errors += Test-TrackingMasterData -Derivat $Derivat -IStufe $IStufe -DryRun:$DryRun
+    }
+
+    if ($Errors.Count -gt 0) {
+        throw ("Eingabe ungültig: " + ($Errors -join "; "))
+    }
+
+    Invoke-TrackingImport -LabelString $LabelString -QRString $QRString -Derivat $Derivat -IStufe $IStufe -DryRun:$DryRun
 }
+
+function Test-TrackingMasterData {
+    param([string]$Derivat,[string]$IStufe,[switch]$DryRun)
+    if($DryRun){ return @() }
+    $Errors=@()
+    $d=@(Get-PnPListItem -List "Derivate" -Query "<View><Query><Where><Eq><FieldRef Name='DerivatCode'/><Value Type='Text'>$(ConvertTo-CamlValue $Derivat)</Value></Eq></Where></Query><RowLimit>1</RowLimit></View>")
+    if($d.Count -eq 0){$Errors+="Derivat '$Derivat' ist unbekannt"}elseif(-not [bool]$d[0]["Aktiv"]){$Errors+="Derivat '$Derivat' ist inaktiv"}
+    $i=@(Get-PnPListItem -List "IStufen" -Query "<View><Query><Where><Eq><FieldRef Name='IStufeCode'/><Value Type='Text'>$(ConvertTo-CamlValue $IStufe)</Value></Eq></Where></Query><RowLimit>1</RowLimit></View>")
+    if($i.Count -eq 0){$Errors+="I-Stufe '$IStufe' ist unbekannt"}elseif(-not [bool]$i[0]["Aktiv"]){$Errors+="I-Stufe '$IStufe' ist inaktiv"}
+    return $Errors
+}
+
 
