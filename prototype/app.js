@@ -111,7 +111,16 @@ const elements = {
     labelOcrHardware: document.getElementById("labelOcrHardware"),
     labelOcrSoftware: document.getElementById("labelOcrSoftware"),
     labelOcrStatus: document.getElementById("labelOcrStatus"),
-    labelOcrRawText: document.getElementById("labelOcrRawText")
+    labelOcrRawText: document.getElementById("labelOcrRawText"),
+    labelOcrPartNumberField: document.getElementById("labelOcrPartNumberField"),
+    labelOcrSerialNumberField: document.getElementById("labelOcrSerialNumberField"),
+    labelOcrHardwareField: document.getElementById("labelOcrHardwareField"),
+    labelOcrSoftwareField: document.getElementById("labelOcrSoftwareField"),
+    labelOcrPartNumberCompare: document.getElementById("labelOcrPartNumberCompare"),
+    labelOcrSerialNumberCompare: document.getElementById("labelOcrSerialNumberCompare"),
+    labelOcrHardwareCompare: document.getElementById("labelOcrHardwareCompare"),
+    labelOcrSoftwareCompare: document.getElementById("labelOcrSoftwareCompare"),
+    applyOcrValuesButton: document.getElementById("applyOcrValuesButton")
 };
 
 function normalizeText(value) {
@@ -1648,15 +1657,44 @@ function setLabelOcrStatus(
     elements.labelOcrStatus.textContent = text;
 }
 
+function clearOcrFieldComparison() {
+    const fieldElements = [
+        elements.labelOcrPartNumberField,
+        elements.labelOcrSerialNumberField,
+        elements.labelOcrHardwareField,
+        elements.labelOcrSoftwareField
+    ];
+
+    for (const fieldElement of fieldElements) {
+        fieldElement.classList.remove(
+            "match",
+            "mismatch",
+            "missing"
+        );
+    }
+
+    elements.labelOcrPartNumberCompare.textContent =
+        "Noch nicht verglichen";
+
+    elements.labelOcrSerialNumberCompare.textContent =
+        "Noch nicht verglichen";
+
+    elements.labelOcrHardwareCompare.textContent =
+        "Noch nicht verglichen";
+
+    elements.labelOcrSoftwareCompare.textContent =
+        "Noch nicht verglichen";
+}
+
 function clearLabelOcrResult() {
     elements.labelOcrPanel.classList.add("hidden");
 
     setLabelOcrProgress("–");
 
-    elements.labelOcrPartNumber.textContent = "–";
-    elements.labelOcrSerialNumber.textContent = "–";
-    elements.labelOcrHardware.textContent = "–";
-    elements.labelOcrSoftware.textContent = "–";
+    elements.labelOcrPartNumber.value = "";
+    elements.labelOcrSerialNumber.value = "";
+    elements.labelOcrHardware.value = "";
+    elements.labelOcrSoftware.value = "";
 
     elements.labelOcrStatus.textContent = "";
     elements.labelOcrStatus.classList.remove(
@@ -1666,6 +1704,8 @@ function clearLabelOcrResult() {
     );
 
     elements.labelOcrRawText.textContent = "";
+
+    clearOcrFieldComparison();
 }
 
 function updateLabelOcrWorkerProgress(message) {
@@ -1940,6 +1980,177 @@ function getMissingOcrFieldsForQr(
     return missing;
 }
 
+function getEditableOcrData() {
+    return {
+        partNumber:
+            normalizeText(
+                elements.labelOcrPartNumber.value
+            ),
+        serialNumber:
+            normalizeText(
+                elements.labelOcrSerialNumber.value
+            ),
+        hardware:
+            normalizeText(
+                elements.labelOcrHardware.value
+            ),
+        software:
+            normalizeText(
+                elements.labelOcrSoftware.value
+            )
+    };
+}
+
+function getQrDataForOcrPreview() {
+    const qrText =
+        elements.qrInput.value.trim();
+
+    if (!qrText) {
+        return null;
+    }
+
+    try {
+        return parseTrackingString(
+            qrText
+        );
+    }
+    catch {
+        return null;
+    }
+}
+
+function updateSingleOcrComparison(
+    fieldElement,
+    statusElement,
+    labelValue,
+    qrValue
+) {
+    fieldElement.classList.remove(
+        "match",
+        "mismatch",
+        "missing"
+    );
+
+    const normalizedLabel =
+        normalizeText(labelValue);
+
+    const normalizedQr =
+        normalizeText(qrValue);
+
+    if (
+        !normalizedLabel &&
+        !normalizedQr
+    ) {
+        statusElement.textContent =
+            "Auf Label und QR nicht vorhanden";
+
+        return;
+    }
+
+    if (
+        !normalizedLabel &&
+        normalizedQr
+    ) {
+        fieldElement.classList.add(
+            "missing"
+        );
+
+        statusElement.textContent =
+            `OCR fehlt · QR: ${normalizedQr}`;
+
+        return;
+    }
+
+    if (
+        normalizedLabel &&
+        !normalizedQr
+    ) {
+        fieldElement.classList.add(
+            "missing"
+        );
+
+        statusElement.textContent =
+            "Wert auf Label erkannt · QR-Feld leer";
+
+        return;
+    }
+
+    if (
+        normalizedLabel ===
+        normalizedQr
+    ) {
+        fieldElement.classList.add(
+            "match"
+        );
+
+        statusElement.textContent =
+            "✓ Gleich";
+
+        return;
+    }
+
+    fieldElement.classList.add(
+        "mismatch"
+    );
+
+    statusElement.textContent =
+        `⚠ Abweichung · QR: ${normalizedQr}`;
+}
+
+function updateLabelOcrComparisonPreview() {
+    const qrData =
+        getQrDataForOcrPreview();
+
+    if (!qrData) {
+        clearOcrFieldComparison();
+
+        elements.labelOcrPartNumberCompare.textContent =
+            "Kein auswertbarer QR-Code";
+
+        elements.labelOcrSerialNumberCompare.textContent =
+            "Kein auswertbarer QR-Code";
+
+        elements.labelOcrHardwareCompare.textContent =
+            "Kein auswertbarer QR-Code";
+
+        elements.labelOcrSoftwareCompare.textContent =
+            "Kein auswertbarer QR-Code";
+
+        return;
+    }
+
+    const ocrData =
+        getEditableOcrData();
+
+    updateSingleOcrComparison(
+        elements.labelOcrPartNumberField,
+        elements.labelOcrPartNumberCompare,
+        ocrData.partNumber,
+        qrData.partNumber
+    );
+
+    updateSingleOcrComparison(
+        elements.labelOcrSerialNumberField,
+        elements.labelOcrSerialNumberCompare,
+        ocrData.serialNumber,
+        qrData.serialNumber
+    );
+
+    updateSingleOcrComparison(
+        elements.labelOcrHardwareField,
+        elements.labelOcrHardwareCompare,
+        ocrData.hardware,
+        qrData.hardware
+    );
+
+    updateSingleOcrComparison(
+        elements.labelOcrSoftwareField,
+        elements.labelOcrSoftwareCompare,
+        ocrData.software,
+        qrData.software
+    );
+}
+
 function renderLabelOcrResult(
     ocrData,
     rawText
@@ -1948,28 +2159,93 @@ function renderLabelOcrResult(
         "hidden"
     );
 
-    elements.labelOcrPartNumber.textContent =
-        displayValue(
+    elements.labelOcrPartNumber.value =
+        normalizeText(
             ocrData.partNumber
         );
 
-    elements.labelOcrSerialNumber.textContent =
-        displayValue(
+    elements.labelOcrSerialNumber.value =
+        normalizeText(
             ocrData.serialNumber
         );
 
-    elements.labelOcrHardware.textContent =
-        displayValue(
+    elements.labelOcrHardware.value =
+        normalizeText(
             ocrData.hardware
         );
 
-    elements.labelOcrSoftware.textContent =
-        displayValue(
+    elements.labelOcrSoftware.value =
+        normalizeText(
             ocrData.software
         );
 
     elements.labelOcrRawText.textContent =
         String(rawText || "").trim();
+
+    updateLabelOcrComparisonPreview();
+}
+
+function applyOcrValuesAndCompare() {
+    const ocrData =
+        getEditableOcrData();
+
+    const missingRequired = [];
+
+    if (!ocrData.partNumber) {
+        missingRequired.push("PartNumber");
+    }
+
+    if (!ocrData.serialNumber) {
+        missingRequired.push("SerialNumber");
+    }
+
+    if (missingRequired.length > 0) {
+        setLabelOcrStatus(
+            `Bitte zuerst die OCR-Pflichtfelder korrigieren: ${missingRequired.join(", ")}.`,
+            "warning"
+        );
+
+        updateLabelOcrComparisonPreview();
+        return;
+    }
+
+    const labelTrackingString =
+        buildTrackingStringFromOcrData(
+            ocrData
+        );
+
+    elements.labelInput.value =
+        labelTrackingString;
+
+    updateLabelOcrComparisonPreview();
+
+    if (!elements.qrInput.value.trim()) {
+        setLabelOcrStatus(
+            "OCR-Werte wurden in das Label-Feld übernommen. Für den Vergleich fehlt noch ein QR-Code.",
+            "warning"
+        );
+
+        return;
+    }
+
+    if (
+        !elements.derivat.value ||
+        !elements.iStufe.value
+    ) {
+        setLabelOcrStatus(
+            "OCR-Werte wurden übernommen und mit dem QR-Code vorverglichen. Für die vollständige Teileprüfung bitte Derivat und I-Stufe wählen.",
+            "warning"
+        );
+
+        return;
+    }
+
+    checkCurrentInput();
+
+    setLabelOcrStatus(
+        "Korrigierte OCR-Werte wurden übernommen. Die vollständige Label/QR-Prüfung wurde ausgeführt.",
+        "success"
+    );
 }
 
 function prepareLabelOcrCanvas(
@@ -2133,7 +2409,7 @@ async function recognizeVisibleLabelText(
         );
 
         setLabelOcrStatus(
-            "Sichtbare Beschriftung wurde erkannt und in das Label-Feld übernommen.",
+            "OCR abgeschlossen. Bitte die erkannten Werte kontrollieren und anschließend „OCR-Werte übernehmen & vergleichen“ verwenden.",
             "success"
         );
 
@@ -2368,32 +2644,17 @@ async function captureLabelPhoto() {
         }
 
         if (
-            qrText &&
-            ocrResult &&
-            ocrResult.complete &&
-            elements.labelInput.value.trim() &&
-            elements.derivat.value &&
-            elements.iStufe.value
-        ) {
-            checkCurrentInput();
-
-            setQrScannerStatus(
-                "Aufnahme abgeschlossen: QR-Code und Label-Beschriftung wurden gelesen und der Vergleich wurde ausgeführt.",
-                "success"
-            );
-        }
-        else if (
             ocrResult &&
             ocrResult.complete
         ) {
             setQrScannerStatus(
-                "Aufnahme abgeschlossen. QR-Code und Label-Beschriftung wurden gelesen. Für den automatischen Vergleich bitte zusätzlich Derivat und I-Stufe wählen.",
+                "Aufnahme abgeschlossen. Bitte jetzt die OCR-Werte unter dem aufgenommenen Label kontrollieren, bei Bedarf korrigieren und anschließend übernehmen.",
                 "success"
             );
         }
         else {
             setQrScannerStatus(
-                "Aufnahme abgeschlossen. Bitte die erkannten OCR-Werte kontrollieren und fehlende Felder gegebenenfalls manuell ergänzen.",
+                "Aufnahme abgeschlossen. Bitte die erkannten OCR-Werte kontrollieren und fehlende Felder manuell ergänzen.",
                 "error"
             );
         }
@@ -3961,6 +4222,38 @@ document.addEventListener(
             state.qrScannerRunning
         ) {
             closeQrScanner();
+        }
+    }
+);
+
+elements.applyOcrValuesButton.addEventListener(
+    "click",
+    applyOcrValuesAndCompare
+);
+
+for (
+    const ocrInput of [
+        elements.labelOcrPartNumber,
+        elements.labelOcrSerialNumber,
+        elements.labelOcrHardware,
+        elements.labelOcrSoftware
+    ]
+) {
+    ocrInput.addEventListener(
+        "input",
+        updateLabelOcrComparisonPreview
+    );
+}
+
+elements.qrInput.addEventListener(
+    "input",
+    () => {
+        if (
+            !elements.labelOcrPanel.classList.contains(
+                "hidden"
+            )
+        ) {
+            updateLabelOcrComparisonPreview();
         }
     }
 );

@@ -1595,3 +1595,87 @@ body.scanner-open {
     }
 }
 
+.label-ocr-field {
+    transition:
+        border-color 120ms ease,
+        background 120ms ease;
+}
+
+.label-ocr-field.match {
+    border-color: var(--ok-text);
+    background: var(--ok-bg);
+}
+
+.label-ocr-field.mismatch {
+    border-color: var(--error-text);
+    background: var(--error-bg);
+}
+
+.label-ocr-field.missing {
+    border-color: var(--double-text);
+    background: var(--double-bg);
+}
+
+.label-ocr-input {
+    width: 100%;
+    min-width: 0;
+    padding: 8px 9px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: #ffffff;
+    color: var(--text);
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 0.92rem;
+    font-weight: 700;
+}
+
+.label-ocr-input:focus {
+    outline: 2px solid rgb(0 120 212 / 20%);
+    outline-offset: 1px;
+    border-color: #0078d4;
+}
+
+.label-ocr-field small {
+    display: block;
+    margin-top: 6px;
+    color: var(--text-muted);
+    font-size: 0.74rem;
+    font-weight: 700;
+    text-transform: none;
+}
+
+.label-ocr-field.match small {
+    color: var(--ok-text);
+}
+
+.label-ocr-field.mismatch small {
+    color: var(--error-text);
+}
+
+.label-ocr-field.missing small {
+    color: var(--double-text);
+}
+
+.label-ocr-review-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.label-ocr-review-actions .hint {
+    margin: 0;
+}
+
+@media (max-width: 720px) {
+    .label-ocr-review-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .label-ocr-review-actions .button {
+        width: 100%;
+    }
+}
+

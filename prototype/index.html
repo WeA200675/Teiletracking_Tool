@@ -182,25 +182,79 @@
                             </div>
 
                             <div class="label-ocr-fields">
-                                <div class="label-ocr-field">
+                                <label
+                                    id="labelOcrPartNumberField"
+                                    class="label-ocr-field"
+                                >
                                     <span>PartNumber</span>
-                                    <strong id="labelOcrPartNumber">–</strong>
-                                </div>
+                                    <input
+                                        id="labelOcrPartNumber"
+                                        class="label-ocr-input"
+                                        type="text"
+                                        autocomplete="off"
+                                        spellcheck="false"
+                                    >
+                                    <small id="labelOcrPartNumberCompare">Noch nicht verglichen</small>
+                                </label>
 
-                                <div class="label-ocr-field">
+                                <label
+                                    id="labelOcrSerialNumberField"
+                                    class="label-ocr-field"
+                                >
                                     <span>SerialNumber</span>
-                                    <strong id="labelOcrSerialNumber">–</strong>
-                                </div>
+                                    <input
+                                        id="labelOcrSerialNumber"
+                                        class="label-ocr-input"
+                                        type="text"
+                                        autocomplete="off"
+                                        spellcheck="false"
+                                    >
+                                    <small id="labelOcrSerialNumberCompare">Noch nicht verglichen</small>
+                                </label>
 
-                                <div class="label-ocr-field">
+                                <label
+                                    id="labelOcrHardwareField"
+                                    class="label-ocr-field"
+                                >
                                     <span>Hardware</span>
-                                    <strong id="labelOcrHardware">–</strong>
-                                </div>
+                                    <input
+                                        id="labelOcrHardware"
+                                        class="label-ocr-input"
+                                        type="text"
+                                        autocomplete="off"
+                                        spellcheck="false"
+                                    >
+                                    <small id="labelOcrHardwareCompare">Noch nicht verglichen</small>
+                                </label>
 
-                                <div class="label-ocr-field">
+                                <label
+                                    id="labelOcrSoftwareField"
+                                    class="label-ocr-field"
+                                >
                                     <span>Software</span>
-                                    <strong id="labelOcrSoftware">–</strong>
-                                </div>
+                                    <input
+                                        id="labelOcrSoftware"
+                                        class="label-ocr-input"
+                                        type="text"
+                                        autocomplete="off"
+                                        spellcheck="false"
+                                    >
+                                    <small id="labelOcrSoftwareCompare">Noch nicht verglichen</small>
+                                </label>
+                            </div>
+
+                            <div class="label-ocr-review-actions">
+                                <button
+                                    id="applyOcrValuesButton"
+                                    class="button button-primary button-small"
+                                    type="button"
+                                >
+                                    OCR-Werte übernehmen &amp; vergleichen
+                                </button>
+
+                                <span class="hint">
+                                    Werte bei Bedarf zuerst manuell korrigieren.
+                                </span>
                             </div>
 
                             <p
