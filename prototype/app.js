@@ -10,7 +10,18 @@ const state = {
     localMasterData: createEmptyLocalMasterData(),
     initialTrackingData: [],
     savedItems: [],
-    currentRecord: null
+    currentRecord: null,
+    qrScannerStream: null,
+    qrScannerAnimationFrame: null,
+    qrScannerDetector: null,
+    qrScannerMode: null,
+    qrScannerCanvas: null,
+    qrScannerCanvasContext: null,
+    qrScannerRunning: false,
+    capturedLabelImageDataUrl: null,
+    labelOcrWorker: null,
+    labelOcrWorkerPromise: null,
+    labelOcrBusy: false
 };
 
 const elements = {
@@ -79,7 +90,28 @@ const elements = {
     exportTrackingCsvButton: document.getElementById("exportTrackingCsvButton"),
     importTrackingJsonButton: document.getElementById("importTrackingJsonButton"),
     trackingImportFile: document.getElementById("trackingImportFile"),
-    trackingTransferMessage: document.getElementById("trackingTransferMessage")
+    trackingTransferMessage: document.getElementById("trackingTransferMessage"),
+    openQrScannerButton: document.getElementById("openQrScannerButton"),
+    qrScanResult: document.getElementById("qrScanResult"),
+    qrScannerOverlay: document.getElementById("qrScannerOverlay"),
+    qrScannerVideo: document.getElementById("qrScannerVideo"),
+    qrScannerStatus: document.getElementById("qrScannerStatus"),
+    closeQrScannerButton: document.getElementById("closeQrScannerButton"),
+    cancelQrScannerButton: document.getElementById("cancelQrScannerButton"),
+    retryQrScannerButton: document.getElementById("retryQrScannerButton"),
+    captureLabelButton: document.getElementById("captureLabelButton"),
+    capturedLabelPreview: document.getElementById("capturedLabelPreview"),
+    capturedLabelImage: document.getElementById("capturedLabelImage"),
+    capturedLabelInfo: document.getElementById("capturedLabelInfo"),
+    removeCapturedLabelButton: document.getElementById("removeCapturedLabelButton"),
+    labelOcrPanel: document.getElementById("labelOcrPanel"),
+    labelOcrProgress: document.getElementById("labelOcrProgress"),
+    labelOcrPartNumber: document.getElementById("labelOcrPartNumber"),
+    labelOcrSerialNumber: document.getElementById("labelOcrSerialNumber"),
+    labelOcrHardware: document.getElementById("labelOcrHardware"),
+    labelOcrSoftware: document.getElementById("labelOcrSoftware"),
+    labelOcrStatus: document.getElementById("labelOcrStatus"),
+    labelOcrRawText: document.getElementById("labelOcrRawText")
 };
 
 function normalizeText(value) {
@@ -1291,6 +1323,1192 @@ function addIStufe() {
 }
 
 
+
+function setQrScanResult(message, type = "") {
+    elements.qrScanResult.classList.remove(
+        "success",
+        "error"
+    );
+
+    if (type) {
+        elements.qrScanResult.classList.add(type);
+    }
+
+    elements.qrScanResult.textContent = message;
+}
+
+function setQrScannerStatus(message, type = "") {
+    elements.qrScannerStatus.classList.remove(
+        "success",
+        "error"
+    );
+
+    if (type) {
+        elements.qrScannerStatus.classList.add(type);
+    }
+
+    elements.qrScannerStatus.textContent = message;
+}
+
+function getQrScannerErrorMessage(error) {
+    if (!error) {
+        return "Die Kamera konnte nicht gestartet werden.";
+    }
+
+    switch (error.name) {
+        case "NotAllowedError":
+        case "PermissionDeniedError":
+            return "Der Kamerazugriff wurde nicht erlaubt. Bitte erlaube den Kamerazugriff im Browser.";
+
+        case "NotFoundError":
+        case "DevicesNotFoundError":
+            return "Es wurde keine verwendbare Kamera gefunden.";
+
+        case "NotReadableError":
+        case "TrackStartError":
+            return "Die Kamera ist bereits belegt oder konnte nicht gelesen werden.";
+
+        case "OverconstrainedError":
+        case "ConstraintNotSatisfiedError":
+            return "Die gewünschte Kameraeinstellung wird von diesem Gerät nicht unterstützt.";
+
+        case "SecurityError":
+            return "Der Browser blockiert den Kamerazugriff aus Sicherheitsgründen.";
+
+        default:
+            return error.message
+                ? `Kamera-Fehler: ${error.message}`
+                : "Die Kamera konnte nicht gestartet werden.";
+    }
+}
+
+async function createQrScannerEngine() {
+    state.qrScannerDetector = null;
+    state.qrScannerMode = null;
+    state.qrScannerCanvas = null;
+    state.qrScannerCanvasContext = null;
+
+    if ("BarcodeDetector" in window) {
+        try {
+            let supportsQr = true;
+
+            if (
+                typeof BarcodeDetector.getSupportedFormats ===
+                "function"
+            ) {
+                const supportedFormats =
+                    await BarcodeDetector.getSupportedFormats();
+
+                supportsQr =
+                    supportedFormats.includes("qr_code");
+            }
+
+            if (supportsQr) {
+                state.qrScannerDetector =
+                    new BarcodeDetector({
+                        formats: ["qr_code"]
+                    });
+
+                state.qrScannerMode =
+                    "BARCODE_DETECTOR";
+
+                return;
+            }
+        }
+        catch (error) {
+            console.warn(
+                "Native BarcodeDetector-Erkennung ist nicht verfügbar. jsQR-Fallback wird verwendet.",
+                error
+            );
+        }
+    }
+
+    if (typeof window.jsQR === "function") {
+        state.qrScannerCanvas =
+            document.createElement("canvas");
+
+        state.qrScannerCanvasContext =
+            state.qrScannerCanvas.getContext(
+                "2d",
+                {
+                    willReadFrequently: true
+                }
+            );
+
+        if (!state.qrScannerCanvasContext) {
+            throw new Error(
+                "Der QR-Fallback konnte keinen Canvas-Kontext erstellen."
+            );
+        }
+
+        state.qrScannerMode = "JSQR";
+        return;
+    }
+
+    throw new Error(
+        "Die QR-Erkennung ist in diesem Browser nicht verfügbar und der jsQR-Fallback konnte nicht geladen werden. Bitte prüfe die Internetverbindung und lade die Seite neu."
+    );
+}
+
+function stopQrScannerCamera() {
+    state.qrScannerRunning = false;
+
+    if (state.qrScannerAnimationFrame) {
+        cancelAnimationFrame(
+            state.qrScannerAnimationFrame
+        );
+
+        state.qrScannerAnimationFrame = null;
+    }
+
+    if (state.qrScannerStream) {
+        for (
+            const track of
+            state.qrScannerStream.getTracks()
+        ) {
+            track.stop();
+        }
+
+        state.qrScannerStream = null;
+    }
+
+    elements.qrScannerVideo.srcObject = null;
+
+    state.qrScannerDetector = null;
+    state.qrScannerMode = null;
+    state.qrScannerCanvas = null;
+    state.qrScannerCanvasContext = null;
+}
+
+function closeQrScanner() {
+    stopQrScannerCamera();
+
+    elements.qrScannerOverlay.classList.add(
+        "hidden"
+    );
+
+    document.body.classList.remove(
+        "scanner-open"
+    );
+}
+
+function getScannedQrText(barcode) {
+    if (!barcode) {
+        return "";
+    }
+
+    return String(
+        barcode.rawValue || ""
+    ).trim();
+}
+
+function acceptScannedQrText(rawValue) {
+    const value = String(rawValue || "").trim();
+
+    if (!value) {
+        setQrScannerStatus(
+            "Der QR-Code enthält keinen auswertbaren Text.",
+            "error"
+        );
+
+        return false;
+    }
+
+    try {
+        parseTrackingString(value);
+    }
+    catch (error) {
+        setQrScannerStatus(
+            `QR-Code erkannt, aber das Datenformat passt noch nicht zum aktuellen Parser: ${error.message}`,
+            "error"
+        );
+
+        return false;
+    }
+
+    elements.qrInput.value = value;
+
+    setQrScanResult(
+        "QR-Code erfolgreich per Kamera übernommen.",
+        "success"
+    );
+
+    closeQrScanner();
+
+    if (
+        elements.labelInput.value.trim() &&
+        elements.derivat.value &&
+        elements.iStufe.value
+    ) {
+        checkCurrentInput();
+    }
+
+    return true;
+}
+
+function scanQrWithJsQr(video) {
+    const canvas = state.qrScannerCanvas;
+    const context =
+        state.qrScannerCanvasContext;
+
+    if (
+        !canvas ||
+        !context ||
+        typeof window.jsQR !== "function"
+    ) {
+        return "";
+    }
+
+    const width =
+        video.videoWidth;
+
+    const height =
+        video.videoHeight;
+
+    if (
+        !width ||
+        !height
+    ) {
+        return "";
+    }
+
+    if (
+        canvas.width !== width ||
+        canvas.height !== height
+    ) {
+        canvas.width = width;
+        canvas.height = height;
+    }
+
+    context.drawImage(
+        video,
+        0,
+        0,
+        width,
+        height
+    );
+
+    const imageData =
+        context.getImageData(
+            0,
+            0,
+            width,
+            height
+        );
+
+    const result =
+        window.jsQR(
+            imageData.data,
+            width,
+            height,
+            {
+                inversionAttempts:
+                    "attemptBoth"
+            }
+        );
+
+    return result && result.data
+        ? String(result.data).trim()
+        : "";
+}
+
+
+
+function setLabelOcrProgress(
+    text,
+    type = ""
+) {
+    elements.labelOcrProgress.classList.remove(
+        "running",
+        "success",
+        "error"
+    );
+
+    if (type) {
+        elements.labelOcrProgress.classList.add(type);
+    }
+
+    elements.labelOcrProgress.textContent = text;
+}
+
+function setLabelOcrStatus(
+    text,
+    type = ""
+) {
+    elements.labelOcrStatus.classList.remove(
+        "success",
+        "warning",
+        "error"
+    );
+
+    if (type) {
+        elements.labelOcrStatus.classList.add(type);
+    }
+
+    elements.labelOcrStatus.textContent = text;
+}
+
+function clearLabelOcrResult() {
+    elements.labelOcrPanel.classList.add("hidden");
+
+    setLabelOcrProgress("–");
+
+    elements.labelOcrPartNumber.textContent = "–";
+    elements.labelOcrSerialNumber.textContent = "–";
+    elements.labelOcrHardware.textContent = "–";
+    elements.labelOcrSoftware.textContent = "–";
+
+    elements.labelOcrStatus.textContent = "";
+    elements.labelOcrStatus.classList.remove(
+        "success",
+        "warning",
+        "error"
+    );
+
+    elements.labelOcrRawText.textContent = "";
+}
+
+function updateLabelOcrWorkerProgress(message) {
+    if (!message) {
+        return;
+    }
+
+    const status =
+        String(message.status || "").trim();
+
+    const progress =
+        Number(message.progress);
+
+    if (
+        Number.isFinite(progress) &&
+        progress >= 0 &&
+        progress <= 1
+    ) {
+        const percent =
+            Math.round(progress * 100);
+
+        setLabelOcrProgress(
+            `${percent} %`,
+            "running"
+        );
+
+        if (status) {
+            setLabelOcrStatus(
+                `OCR läuft: ${status} …`
+            );
+        }
+
+        return;
+    }
+
+    if (status) {
+        setLabelOcrStatus(
+            `OCR wird vorbereitet: ${status} …`
+        );
+    }
+}
+
+async function getLabelOcrWorker() {
+    if (state.labelOcrWorker) {
+        return state.labelOcrWorker;
+    }
+
+    if (state.labelOcrWorkerPromise) {
+        return state.labelOcrWorkerPromise;
+    }
+
+    if (
+        !window.Tesseract ||
+        typeof window.Tesseract.createWorker !==
+        "function"
+    ) {
+        throw new Error(
+            "Die OCR-Bibliothek Tesseract.js konnte nicht geladen werden. Bitte Internetverbindung prüfen und die Seite neu laden."
+        );
+    }
+
+    state.labelOcrWorkerPromise =
+        window.Tesseract.createWorker(
+            "eng",
+            1,
+            {
+                logger:
+                    updateLabelOcrWorkerProgress
+            }
+        );
+
+    try {
+        state.labelOcrWorker =
+            await state.labelOcrWorkerPromise;
+
+        return state.labelOcrWorker;
+    }
+    finally {
+        state.labelOcrWorkerPromise = null;
+    }
+}
+
+function normalizeOcrLine(value) {
+    return String(value || "")
+        .replace(/\u00A0/g, " ")
+        .replace(/[|]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function cleanOcrFieldValue(value) {
+    return normalizeText(
+        String(value || "")
+            .replace(/^[=:;,\-\s]+/, "")
+            .replace(/[;,\s]+$/, "")
+    );
+}
+
+function findOcrFieldValue(
+    lines,
+    aliases
+) {
+    const aliasPattern =
+        aliases.join("|");
+
+    const regex =
+        new RegExp(
+            `(?:^|\\s)(?:${aliasPattern})\\s*(?:[:=\\-]|\\s)\\s*([A-Z0-9][A-Z0-9._/\\-]*)`,
+            "i"
+        );
+
+    for (const line of lines) {
+        const match =
+            normalizeOcrLine(line)
+                .match(regex);
+
+        if (
+            match &&
+            match[1]
+        ) {
+            return cleanOcrFieldValue(
+                match[1]
+            );
+        }
+    }
+
+    return "";
+}
+
+function extractTrackingDataFromOcrText(
+    rawText
+) {
+    const normalizedRaw =
+        String(rawText || "")
+            .replace(/\r/g, "\n");
+
+    const lines =
+        normalizedRaw
+            .split(/\n+/)
+            .map(normalizeOcrLine)
+            .filter(Boolean);
+
+    const combinedLines = [
+        ...lines,
+        normalizeOcrLine(
+            lines.join(" ")
+        )
+    ];
+
+    const partNumber =
+        findOcrFieldValue(
+            combinedLines,
+            [
+                "PN",
+                "P\\s*\\/\\s*N",
+                "PART\\s*NO\\.?",
+                "PART\\s*NUMBER",
+                "PARTNUMBER",
+                "PART\\s*NR\\.?",
+                "TEILENUMMER",
+                "TEILE?\\s*NR\\.?"
+            ]
+        );
+
+    const serialNumber =
+        findOcrFieldValue(
+            combinedLines,
+            [
+                "SN",
+                "S\\s*\\/\\s*N",
+                "SERIAL\\s*NO\\.?",
+                "SERIAL\\s*NUMBER",
+                "SERIALNUMBER",
+                "SERIAL",
+                "SERIENNUMMER",
+                "SERIEN\\s*NR\\.?"
+            ]
+        );
+
+    const hardware =
+        findOcrFieldValue(
+            combinedLines,
+            [
+                "HW",
+                "HARDWARE",
+                "HARDWARE\\s*VERSION",
+                "HW\\s*VERSION"
+            ]
+        );
+
+    const software =
+        findOcrFieldValue(
+            combinedLines,
+            [
+                "SW",
+                "SOFTWARE",
+                "SOFTWARE\\s*VERSION",
+                "SW\\s*VERSION"
+            ]
+        );
+
+    return {
+        partNumber,
+        serialNumber,
+        hardware,
+        software
+    };
+}
+
+function buildTrackingStringFromOcrData(
+    data
+) {
+    const segments = [];
+
+    if (data.partNumber) {
+        segments.push(
+            `PN=${data.partNumber}`
+        );
+    }
+
+    if (data.serialNumber) {
+        segments.push(
+            `SN=${data.serialNumber}`
+        );
+    }
+
+    if (data.hardware) {
+        segments.push(
+            `HW=${data.hardware}`
+        );
+    }
+
+    if (data.software) {
+        segments.push(
+            `SW=${data.software}`
+        );
+    }
+
+    return segments.join(";");
+}
+
+function getMissingOcrFieldsForQr(
+    ocrData,
+    qrData
+) {
+    const missing = [];
+
+    if (!ocrData.partNumber) {
+        missing.push("PN");
+    }
+
+    if (!ocrData.serialNumber) {
+        missing.push("SN");
+    }
+
+    if (
+        qrData &&
+        qrData.hardware &&
+        !ocrData.hardware
+    ) {
+        missing.push("HW");
+    }
+
+    if (
+        qrData &&
+        qrData.software &&
+        !ocrData.software
+    ) {
+        missing.push("SW");
+    }
+
+    return missing;
+}
+
+function renderLabelOcrResult(
+    ocrData,
+    rawText
+) {
+    elements.labelOcrPanel.classList.remove(
+        "hidden"
+    );
+
+    elements.labelOcrPartNumber.textContent =
+        displayValue(
+            ocrData.partNumber
+        );
+
+    elements.labelOcrSerialNumber.textContent =
+        displayValue(
+            ocrData.serialNumber
+        );
+
+    elements.labelOcrHardware.textContent =
+        displayValue(
+            ocrData.hardware
+        );
+
+    elements.labelOcrSoftware.textContent =
+        displayValue(
+            ocrData.software
+        );
+
+    elements.labelOcrRawText.textContent =
+        String(rawText || "").trim();
+}
+
+function prepareLabelOcrCanvas(
+    sourceCanvas
+) {
+    const targetWidth =
+        Math.min(
+            2200,
+            Math.max(
+                sourceCanvas.width,
+                Math.round(
+                    sourceCanvas.width * 1.5
+                )
+            )
+        );
+
+    const scale =
+        targetWidth /
+        sourceCanvas.width;
+
+    const targetHeight =
+        Math.round(
+            sourceCanvas.height *
+            scale
+        );
+
+    const canvas =
+        document.createElement("canvas");
+
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+
+    const context =
+        canvas.getContext(
+            "2d",
+            {
+                willReadFrequently: true
+            }
+        );
+
+    if (!context) {
+        throw new Error(
+            "Das Labelbild konnte nicht für OCR vorbereitet werden."
+        );
+    }
+
+    context.drawImage(
+        sourceCanvas,
+        0,
+        0,
+        targetWidth,
+        targetHeight
+    );
+
+    return canvas;
+}
+
+async function recognizeVisibleLabelText(
+    sourceCanvas,
+    qrText
+) {
+    elements.labelOcrPanel.classList.remove(
+        "hidden"
+    );
+
+    setLabelOcrProgress(
+        "Start …",
+        "running"
+    );
+
+    setLabelOcrStatus(
+        "OCR wird vorbereitet …"
+    );
+
+    state.labelOcrBusy = true;
+
+    try {
+        const worker =
+            await getLabelOcrWorker();
+
+        const ocrCanvas =
+            prepareLabelOcrCanvas(
+                sourceCanvas
+            );
+
+        const result =
+            await worker.recognize(
+                ocrCanvas,
+                {
+                    rotateAuto: true
+                }
+            );
+
+        const rawText =
+            result &&
+            result.data &&
+            result.data.text
+                ? result.data.text
+                : "";
+
+        const ocrData =
+            extractTrackingDataFromOcrText(
+                rawText
+            );
+
+        renderLabelOcrResult(
+            ocrData,
+            rawText
+        );
+
+        const labelTrackingString =
+            buildTrackingStringFromOcrData(
+                ocrData
+            );
+
+        if (labelTrackingString) {
+            elements.labelInput.value =
+                labelTrackingString;
+        }
+
+        let qrData = null;
+
+        try {
+            if (qrText) {
+                qrData =
+                    parseTrackingString(
+                        qrText
+                    );
+            }
+        }
+        catch {
+            qrData = null;
+        }
+
+        const missingFields =
+            getMissingOcrFieldsForQr(
+                ocrData,
+                qrData
+            );
+
+        if (missingFields.length > 0) {
+            setLabelOcrProgress(
+                "Unvollständig",
+                "error"
+            );
+
+            setLabelOcrStatus(
+                `OCR abgeschlossen, aber folgende Vergleichsfelder wurden nicht sicher erkannt: ${missingFields.join(", ")}. Bitte Label-Eingabe kontrollieren oder manuell korrigieren.`,
+                "warning"
+            );
+
+            return {
+                ocrData,
+                complete: false
+            };
+        }
+
+        setLabelOcrProgress(
+            "Fertig",
+            "success"
+        );
+
+        setLabelOcrStatus(
+            "Sichtbare Beschriftung wurde erkannt und in das Label-Feld übernommen.",
+            "success"
+        );
+
+        return {
+            ocrData,
+            complete: true
+        };
+    }
+    catch (error) {
+        setLabelOcrProgress(
+            "Fehler",
+            "error"
+        );
+
+        setLabelOcrStatus(
+            error.message ||
+            "Die OCR-Texterkennung ist fehlgeschlagen.",
+            "error"
+        );
+
+        throw error;
+    }
+    finally {
+        state.labelOcrBusy = false;
+    }
+}
+
+async function terminateLabelOcrWorker() {
+    if (state.labelOcrWorker) {
+        const worker =
+            state.labelOcrWorker;
+
+        state.labelOcrWorker = null;
+
+        try {
+            await worker.terminate();
+        }
+        catch {
+            // Beim Verlassen der Seite ist keine weitere Aktion nötig.
+        }
+    }
+}
+
+function showCapturedLabelPreview(dataUrl, infoText) {
+    state.capturedLabelImageDataUrl = dataUrl;
+    elements.capturedLabelImage.src = dataUrl;
+    elements.capturedLabelInfo.textContent = infoText;
+    elements.capturedLabelPreview.classList.remove("hidden");
+}
+
+function removeCapturedLabel() {
+    state.capturedLabelImageDataUrl = null;
+    elements.capturedLabelImage.removeAttribute("src");
+    elements.capturedLabelInfo.textContent = "";
+    elements.capturedLabelPreview.classList.add("hidden");
+    clearLabelOcrResult();
+}
+
+function createCapturedLabelCanvas() {
+    const video = elements.qrScannerVideo;
+
+    if (
+        video.readyState <
+        HTMLMediaElement.HAVE_CURRENT_DATA ||
+        !video.videoWidth ||
+        !video.videoHeight
+    ) {
+        throw new Error(
+            "Das Kamerabild ist noch nicht bereit. Bitte kurz warten und erneut auslösen."
+        );
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    const context = canvas.getContext(
+        "2d",
+        { willReadFrequently: true }
+    );
+
+    if (!context) {
+        throw new Error(
+            "Die Label-Aufnahme konnte nicht verarbeitet werden."
+        );
+    }
+
+    context.drawImage(
+        video,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    return { canvas, context };
+}
+
+async function detectQrFromCapturedCanvas(canvas, context) {
+    if (
+        state.qrScannerMode ===
+        "BARCODE_DETECTOR" &&
+        state.qrScannerDetector
+    ) {
+        const barcodes =
+            await state.qrScannerDetector.detect(canvas);
+
+        if (barcodes.length > 0) {
+            return getScannedQrText(barcodes[0]);
+        }
+    }
+
+    if (typeof window.jsQR === "function") {
+        const imageData = context.getImageData(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+        const result = window.jsQR(
+            imageData.data,
+            canvas.width,
+            canvas.height,
+            { inversionAttempts: "attemptBoth" }
+        );
+
+        if (result && result.data) {
+            return String(result.data).trim();
+        }
+    }
+
+    return "";
+}
+
+async function captureLabelPhoto() {
+    if (state.labelOcrBusy) {
+        setQrScannerStatus(
+            "Die Texterkennung läuft bereits. Bitte kurz warten.",
+            "error"
+        );
+
+        return;
+    }
+
+    elements.captureLabelButton.disabled = true;
+
+    try {
+        clearLabelOcrResult();
+
+        setQrScannerStatus(
+            "Label wird aufgenommen. Danach werden QR-Code und sichtbare Beschriftung aus demselben Foto gelesen …"
+        );
+
+        const { canvas, context } =
+            createCapturedLabelCanvas();
+
+        const dataUrl =
+            canvas.toDataURL(
+                "image/jpeg",
+                0.92
+            );
+
+        const qrText =
+            await detectQrFromCapturedCanvas(
+                canvas,
+                context
+            );
+
+        showCapturedLabelPreview(
+            dataUrl,
+            qrText
+                ? "Foto gespeichert. QR-Code erkannt. Sichtbare Beschriftung wird jetzt per OCR gelesen."
+                : "Foto gespeichert. Kein QR-Code erkannt. Die sichtbare Beschriftung wird trotzdem per OCR gelesen."
+        );
+
+        if (qrText) {
+            elements.qrInput.value =
+                qrText;
+
+            try {
+                parseTrackingString(
+                    qrText
+                );
+
+                setQrScanResult(
+                    "QR-Code aus der Labelaufnahme erkannt.",
+                    "success"
+                );
+
+                setQrScannerStatus(
+                    "QR-Code erkannt. OCR der sichtbaren Beschriftung läuft …"
+                );
+            }
+            catch (error) {
+                setQrScanResult(
+                    "QR-Code erkannt, aber das Datenformat passt noch nicht zum aktuellen Testparser.",
+                    "error"
+                );
+
+                setQrScannerStatus(
+                    `QR-Code erkannt. OCR läuft trotzdem weiter. QR-Format: ${error.message}`,
+                    "error"
+                );
+            }
+        }
+        else {
+            setQrScanResult(
+                "Label aufgenommen, aber kein QR-Code erkannt.",
+                "error"
+            );
+
+            setQrScannerStatus(
+                "Kein QR-Code erkannt. OCR der sichtbaren Beschriftung läuft trotzdem …"
+            );
+        }
+
+        let ocrResult = null;
+
+        try {
+            ocrResult =
+                await recognizeVisibleLabelText(
+                    canvas,
+                    qrText
+                );
+        }
+        catch (error) {
+            console.error(
+                "Label-OCR fehlgeschlagen:",
+                error
+            );
+        }
+
+        if (
+            qrText &&
+            ocrResult &&
+            ocrResult.complete &&
+            elements.labelInput.value.trim() &&
+            elements.derivat.value &&
+            elements.iStufe.value
+        ) {
+            checkCurrentInput();
+
+            setQrScannerStatus(
+                "Aufnahme abgeschlossen: QR-Code und Label-Beschriftung wurden gelesen und der Vergleich wurde ausgeführt.",
+                "success"
+            );
+        }
+        else if (
+            ocrResult &&
+            ocrResult.complete
+        ) {
+            setQrScannerStatus(
+                "Aufnahme abgeschlossen. QR-Code und Label-Beschriftung wurden gelesen. Für den automatischen Vergleich bitte zusätzlich Derivat und I-Stufe wählen.",
+                "success"
+            );
+        }
+        else {
+            setQrScannerStatus(
+                "Aufnahme abgeschlossen. Bitte die erkannten OCR-Werte kontrollieren und fehlende Felder gegebenenfalls manuell ergänzen.",
+                "error"
+            );
+        }
+    }
+    catch (error) {
+        setQrScannerStatus(
+            error.message ||
+            "Die Label-Aufnahme ist fehlgeschlagen.",
+            "error"
+        );
+    }
+    finally {
+        elements.captureLabelButton.disabled = false;
+    }
+}
+
+async function scanQrVideoFrame() {
+    // Absichtlich keine automatische Übernahme mehr.
+    // Der QR-Code wird erst beim Auslösen aus derselben Aufnahme gelesen,
+    // die später auch für die OCR der sichtbaren Label-Beschriftung verwendet wird.
+    return;
+}
+
+async function startQrScannerCamera() {
+    stopQrScannerCamera();
+
+    setQrScannerStatus(
+        "Kamera wird vorbereitet …"
+    );
+
+    if (
+        !window.isSecureContext &&
+        location.hostname !== "localhost" &&
+        location.hostname !== "127.0.0.1"
+    ) {
+        setQrScannerStatus(
+            "Der Kamerazugriff benötigt HTTPS oder localhost.",
+            "error"
+        );
+
+        return;
+    }
+
+    if (
+        !navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia
+    ) {
+        setQrScannerStatus(
+            "Dieser Browser stellt keinen Kamerazugriff über getUserMedia bereit.",
+            "error"
+        );
+
+        return;
+    }
+
+    try {
+        await createQrScannerEngine();
+
+        state.qrScannerStream =
+            await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: {
+                    facingMode: {
+                        ideal: "environment"
+                    },
+                    width: {
+                        ideal: 1280
+                    },
+                    height: {
+                        ideal: 720
+                    }
+                }
+            });
+
+        elements.qrScannerVideo.srcObject =
+            state.qrScannerStream;
+
+        await elements.qrScannerVideo.play();
+
+        state.qrScannerRunning = true;
+
+        const scannerName =
+            state.qrScannerMode ===
+            "BARCODE_DETECTOR"
+                ? "native Browser-Erkennung"
+                : "jsQR-Fallback";
+
+        setQrScannerStatus(
+            `Kamera aktiv (${scannerName}). Richte das komplette Label aus und drücke dann „Label aufnehmen“.`
+        );
+    }
+    catch (error) {
+        stopQrScannerCamera();
+
+        setQrScannerStatus(
+            getQrScannerErrorMessage(error),
+            "error"
+        );
+    }
+}
+
+async function openQrScanner() {
+    setQrScanResult("");
+
+    elements.qrScannerOverlay.classList.remove(
+        "hidden"
+    );
+
+    document.body.classList.add(
+        "scanner-open"
+    );
+
+    await startQrScannerCamera();
+}
+
 function showTrackingTransferMessage(message, type) {
     elements.trackingTransferMessage.classList.remove(
         "hidden",
@@ -2490,6 +3708,8 @@ function resetForm() {
     elements.iStufe.value = "";
     elements.labelInput.value = "";
     elements.qrInput.value = "";
+    setQrScanResult("");
+    removeCapturedLabel();
 
     elements.resultCard.classList.add("hidden");
     elements.saveButton.disabled = true;
@@ -2674,6 +3894,82 @@ elements.trackingImportFile.addEventListener(
         if (file) {
             importTrackingJsonFile(file);
         }
+    }
+);
+
+elements.openQrScannerButton.addEventListener(
+    "click",
+    openQrScanner
+);
+
+elements.closeQrScannerButton.addEventListener(
+    "click",
+    closeQrScanner
+);
+
+elements.cancelQrScannerButton.addEventListener(
+    "click",
+    closeQrScanner
+);
+
+elements.retryQrScannerButton.addEventListener(
+    "click",
+    startQrScannerCamera
+);
+
+elements.captureLabelButton.addEventListener(
+    "click",
+    captureLabelPhoto
+);
+
+elements.removeCapturedLabelButton.addEventListener(
+    "click",
+    removeCapturedLabel
+);
+
+elements.qrScannerOverlay.addEventListener(
+    "click",
+    event => {
+        if (
+            event.target ===
+            elements.qrScannerOverlay
+        ) {
+            closeQrScanner();
+        }
+    }
+);
+
+document.addEventListener(
+    "keydown",
+    event => {
+        if (
+            event.key === "Escape" &&
+            !elements.qrScannerOverlay.classList.contains(
+                "hidden"
+            )
+        ) {
+            closeQrScanner();
+        }
+    }
+);
+
+document.addEventListener(
+    "visibilitychange",
+    () => {
+        if (
+            document.hidden &&
+            state.qrScannerRunning
+        ) {
+            closeQrScanner();
+        }
+    }
+);
+
+window.addEventListener(
+    "beforeunload",
+    () => {
+        stopQrScannerCamera();
+        terminateLabelOcrWorker();
     }
 );
 

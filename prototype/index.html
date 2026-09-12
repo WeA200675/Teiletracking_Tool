@@ -125,15 +125,103 @@
                         placeholder="PN=1234567;SN=SN001;HW=HW1;SW=SW1"></textarea>
                 </label>
 
-                <label class="field">
+                <div class="field">
                     <span>QR-Code</span>
                     <textarea id="qrInput" rows="5" spellcheck="false"
                         placeholder="PN=1234567;SN=SN001;HW=HW1;SW=SW1"></textarea>
-                </label>
+
+                    <div class="qr-field-actions">
+                        <button
+                            id="openQrScannerButton"
+                            class="button button-secondary button-small"
+                            type="button"
+                        >
+                            Label mit Kamera aufnehmen
+                        </button>
+
+                        <span id="qrScanResult" class="qr-scan-result" aria-live="polite"></span>
+                    </div>
+
+                    <div id="capturedLabelPreview" class="captured-label-preview hidden">
+                        <div class="captured-label-preview-header">
+                            <strong>Aufgenommenes Label</strong>
+                            <button
+                                id="removeCapturedLabelButton"
+                                class="mini-button"
+                                type="button"
+                            >
+                                Aufnahme verwerfen
+                            </button>
+                        </div>
+
+                        <img
+                            id="capturedLabelImage"
+                            class="captured-label-image"
+                            alt="Aufgenommenes Teilelabel"
+                        >
+
+                        <p id="capturedLabelInfo" class="hint"></p>
+
+                        <section
+                            id="labelOcrPanel"
+                            class="label-ocr-panel hidden"
+                            aria-live="polite"
+                        >
+                            <div class="label-ocr-heading">
+                                <div>
+                                    <p class="eyebrow">Texterkennung</p>
+                                    <h3>Sichtbare Label-Beschriftung</h3>
+                                </div>
+
+                                <span
+                                    id="labelOcrProgress"
+                                    class="label-ocr-progress"
+                                >
+                                    –
+                                </span>
+                            </div>
+
+                            <div class="label-ocr-fields">
+                                <div class="label-ocr-field">
+                                    <span>PartNumber</span>
+                                    <strong id="labelOcrPartNumber">–</strong>
+                                </div>
+
+                                <div class="label-ocr-field">
+                                    <span>SerialNumber</span>
+                                    <strong id="labelOcrSerialNumber">–</strong>
+                                </div>
+
+                                <div class="label-ocr-field">
+                                    <span>Hardware</span>
+                                    <strong id="labelOcrHardware">–</strong>
+                                </div>
+
+                                <div class="label-ocr-field">
+                                    <span>Software</span>
+                                    <strong id="labelOcrSoftware">–</strong>
+                                </div>
+                            </div>
+
+                            <p
+                                id="labelOcrStatus"
+                                class="label-ocr-status"
+                            ></p>
+
+                            <details class="label-ocr-raw">
+                                <summary>Erkannten OCR-Rohtext anzeigen</summary>
+                                <pre id="labelOcrRawText"></pre>
+                            </details>
+                        </section>
+                    </div>
+                </div>
             </div>
 
             <p class="hint">
                 Unterstützte Schlüssel: PN, SN, HW und SW. PN und SN sind Pflichtfelder.
+                Beim Kamera-Workflow werden QR-Code und sichtbare Beschriftung aus derselben Labelaufnahme ausgewertet.
+                Die OCR-Feldzuordnung verwendet zunächst ein flexibles Test-Mapping für Bezeichnungen wie PN / Part No,
+                SN / Serial, HW / Hardware und SW / Software.
             </p>
         </section>
 
@@ -351,6 +439,91 @@
         </section>
     </div>
 
+
+    <div
+        id="qrScannerOverlay"
+        class="scanner-overlay hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="qrScannerTitle"
+    >
+        <section class="scanner-dialog">
+            <div class="scanner-header">
+                <div>
+                    <p class="eyebrow">Kamera</p>
+                    <h2 id="qrScannerTitle">QR-Code scannen</h2>
+                </div>
+
+                <button
+                    id="closeQrScannerButton"
+                    class="scanner-close-button"
+                    type="button"
+                    aria-label="QR-Scanner schließen"
+                    title="Schließen"
+                >
+                    ×
+                </button>
+            </div>
+
+            <div class="scanner-content">
+                <div class="scanner-video-shell">
+                    <video
+                        id="qrScannerVideo"
+                        class="scanner-video"
+                        autoplay
+                        muted
+                        playsinline
+                    ></video>
+
+                    <div class="scanner-target" aria-hidden="true">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+
+                <p id="qrScannerStatus" class="scanner-status" aria-live="polite">
+                    Kamera wird vorbereitet …
+                </p>
+
+                <div class="scanner-actions scanner-actions-capture">
+                    <button
+                        id="captureLabelButton"
+                        class="button button-primary scanner-trigger-button"
+                        type="button"
+                    >
+                        Label aufnehmen
+                    </button>
+
+                    <button
+                        id="retryQrScannerButton"
+                        class="button button-secondary"
+                        type="button"
+                    >
+                        Kamera erneut starten
+                    </button>
+
+                    <button
+                        id="cancelQrScannerButton"
+                        class="button button-ghost"
+                        type="button"
+                    >
+                        Abbrechen
+                    </button>
+                </div>
+
+                <p class="hint">
+                    Richte das komplette Label so aus, dass QR-Code und sichtbare Beschriftung gut lesbar sind.
+                    Mit „Label aufnehmen“ wird ein einzelnes Foto erzeugt. Aus genau diesem Bild werden anschließend
+                    der QR-Code und die sichtbare Beschriftung gelesen und miteinander verglichen.
+                </p>
+            </div>
+        </section>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
     <script src="./app.js"></script>
 </body>
 </html>
