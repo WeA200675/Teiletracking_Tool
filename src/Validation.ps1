@@ -66,8 +66,6 @@ function ConvertFrom-TrackingString {
     foreach ($segmentRaw in $segments) {
         $segment = $segmentRaw.Trim()
 
-        # Ein abschließendes Semikolon oder zusätzliche Leersegmente
-        # werden toleriert.
         if ([string]::IsNullOrWhiteSpace($segment)) {
             continue
         }
@@ -172,17 +170,20 @@ function Get-DuplicateStatus {
 }
 
 
-function New-TrackingRecord {
+function New-TrackingRecordFromData {
     param(
-        [string]$LabelString,
-        [string]$QRString,
+        [Parameter(Mandatory)]
+        [pscustomobject]$Label,
+
+        [Parameter(Mandatory)]
+        [pscustomobject]$QR,
+
         [string]$Derivat,
+
         [string]$IStufe,
+
         [string]$DuplicateStatus = "NEW"
     )
-
-    $Label = ConvertFrom-TrackingString $LabelString
-    $QR = ConvertFrom-TrackingString $QRString
 
     $normalizedDerivat = Get-NormalizedText $Derivat
     $normalizedIStufe = Get-NormalizedText $IStufe
@@ -216,20 +217,41 @@ function New-TrackingRecord {
     }
 
     return [pscustomobject]@{
-        PartNumber       = $Label.PartNumber
-        SerialNumber     = $Label.SerialNumber
+        PartNumber       = Get-NormalizedText $Label.PartNumber
+        SerialNumber     = Get-NormalizedText $Label.SerialNumber
         Derivat          = $normalizedDerivat
         IStufe           = $normalizedIStufe
-        LabelHardware    = $Label.Hardware
-        QRHardware       = $QR.Hardware
-        LabelSoftware    = $Label.Software
-        QRSoftware       = $QR.Software
+        LabelHardware    = Get-NormalizedText $Label.Hardware
+        QRHardware       = Get-NormalizedText $QR.Hardware
+        LabelSoftware    = Get-NormalizedText $Label.Software
+        QRSoftware       = Get-NormalizedText $QR.Software
         DeviceKey        = $DeviceKey
         AssignmentKey    = $AssignmentKey
         DuplicateStatus  = $normalizedDuplicateStatus
         ValidationStatus = $ValidationStatus
         DoppelDerivat    = ($normalizedDuplicateStatus -eq "DOUBLE_DERIVATIVE")
     }
+}
+
+
+function New-TrackingRecord {
+    param(
+        [string]$LabelString,
+        [string]$QRString,
+        [string]$Derivat,
+        [string]$IStufe,
+        [string]$DuplicateStatus = "NEW"
+    )
+
+    $Label = ConvertFrom-TrackingString $LabelString
+    $QR = ConvertFrom-TrackingString $QRString
+
+    return New-TrackingRecordFromData `
+        -Label $Label `
+        -QR $QR `
+        -Derivat $Derivat `
+        -IStufe $IStufe `
+        -DuplicateStatus $DuplicateStatus
 }
 
 
@@ -375,95 +397,6 @@ function Test-QRRequiredFields {
 }
 
 
-function Invoke-TrackingImport {
-    param(
-        [string]$LabelString,
-        [string]$QRString,
-        [string]$Derivat,
-        [string]$IStufe,
-        [switch]$DryRun
-    )
-
-    $Label = ConvertFrom-TrackingString $LabelString
-
-    $normalizedDerivat = Get-NormalizedText $Derivat
-    $normalizedIStufe = Get-NormalizedText $IStufe
-
-    $DeviceKey = Get-DeviceKey `
-        -PartNumber $Label.PartNumber `
-        -SerialNumber $Label.SerialNumber
-
-    $AssignmentKey = Get-AssignmentKey `
-        -PartNumber $Label.PartNumber `
-        -SerialNumber $Label.SerialNumber `
-        -Derivat $normalizedDerivat `
-        -IStufe $normalizedIStufe
-
-    $DuplicateStatus = Get-SharePointDuplicateStatus `
-        -DeviceKey $DeviceKey `
-        -AssignmentKey $AssignmentKey `
-        -DryRun:$DryRun
-
-    $Record = New-TrackingRecord `
-        -LabelString $LabelString `
-        -QRString $QRString `
-        -Derivat $normalizedDerivat `
-        -IStufe $normalizedIStufe `
-        -DuplicateStatus $DuplicateStatus
-
-    Save-TrackingRecord `
-        -Record $Record `
-        -DryRun:$DryRun
-
-    return $Record
-}
-
-
-function Invoke-TrackingImportValidated {
-    param(
-        [string]$LabelString,
-        [string]$QRString,
-        [string]$Derivat,
-        [string]$IStufe,
-        [switch]$DryRun
-    )
-
-    $Label = ConvertFrom-TrackingString $LabelString
-    $QR = ConvertFrom-TrackingString $QRString
-
-    $normalizedDerivat = Get-NormalizedText $Derivat
-    $normalizedIStufe = Get-NormalizedText $IStufe
-
-    $Errors = @()
-
-    $Errors += Test-TrackingRequiredFields `
-        -Label $Label `
-        -Derivat $normalizedDerivat `
-        -IStufe $normalizedIStufe
-
-    $Errors += Test-QRRequiredFields `
-        -QR $QR
-
-    if ($Errors.Count -eq 0) {
-        $Errors += Test-TrackingMasterData `
-            -Derivat $normalizedDerivat `
-            -IStufe $normalizedIStufe `
-            -DryRun:$DryRun
-    }
-
-    if ($Errors.Count -gt 0) {
-        throw ("Eingabe ungültig: " + ($Errors -join "; "))
-    }
-
-    return Invoke-TrackingImport `
-        -LabelString $LabelString `
-        -QRString $QRString `
-        -Derivat $normalizedDerivat `
-        -IStufe $normalizedIStufe `
-        -DryRun:$DryRun
-}
-
-
 function Test-TrackingMasterData {
     param(
         [string]$Derivat,
@@ -510,4 +443,121 @@ function Test-TrackingMasterData {
     }
 
     return $Errors
+}
+
+
+function Invoke-TrackingImportFromData {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject]$Label,
+
+        [Parameter(Mandatory)]
+        [pscustomobject]$QR,
+
+        [string]$Derivat,
+
+        [string]$IStufe,
+
+        [switch]$DryRun
+    )
+
+    $normalizedDerivat = Get-NormalizedText $Derivat
+    $normalizedIStufe = Get-NormalizedText $IStufe
+
+    $DeviceKey = Get-DeviceKey `
+        -PartNumber $Label.PartNumber `
+        -SerialNumber $Label.SerialNumber
+
+    $AssignmentKey = Get-AssignmentKey `
+        -PartNumber $Label.PartNumber `
+        -SerialNumber $Label.SerialNumber `
+        -Derivat $normalizedDerivat `
+        -IStufe $normalizedIStufe
+
+    $DuplicateStatus = Get-SharePointDuplicateStatus `
+        -DeviceKey $DeviceKey `
+        -AssignmentKey $AssignmentKey `
+        -DryRun:$DryRun
+
+    $Record = New-TrackingRecordFromData `
+        -Label $Label `
+        -QR $QR `
+        -Derivat $normalizedDerivat `
+        -IStufe $normalizedIStufe `
+        -DuplicateStatus $DuplicateStatus
+
+    Save-TrackingRecord `
+        -Record $Record `
+        -DryRun:$DryRun
+
+    return $Record
+}
+
+
+function Invoke-TrackingImport {
+    param(
+        [string]$LabelString,
+        [string]$QRString,
+        [string]$Derivat,
+        [string]$IStufe,
+        [switch]$DryRun
+    )
+
+    $Label = ConvertFrom-TrackingString $LabelString
+    $QR = ConvertFrom-TrackingString $QRString
+
+    return Invoke-TrackingImportFromData `
+        -Label $Label `
+        -QR $QR `
+        -Derivat $Derivat `
+        -IStufe $IStufe `
+        -DryRun:$DryRun
+}
+
+
+function Invoke-TrackingImportValidated {
+    param(
+        [string]$LabelString,
+        [string]$QRString,
+        [string]$Derivat,
+        [string]$IStufe,
+        [switch]$DryRun
+    )
+
+    # Label und QR werden für den gesamten Import genau einmal
+    # eingelesen und anschließend als strukturierte Daten
+    # weitergereicht.
+    $Label = ConvertFrom-TrackingString $LabelString
+    $QR = ConvertFrom-TrackingString $QRString
+
+    $normalizedDerivat = Get-NormalizedText $Derivat
+    $normalizedIStufe = Get-NormalizedText $IStufe
+
+    $Errors = @()
+
+    $Errors += Test-TrackingRequiredFields `
+        -Label $Label `
+        -Derivat $normalizedDerivat `
+        -IStufe $normalizedIStufe
+
+    $Errors += Test-QRRequiredFields `
+        -QR $QR
+
+    if ($Errors.Count -eq 0) {
+        $Errors += Test-TrackingMasterData `
+            -Derivat $normalizedDerivat `
+            -IStufe $normalizedIStufe `
+            -DryRun:$DryRun
+    }
+
+    if ($Errors.Count -gt 0) {
+        throw ("Eingabe ungültig: " + ($Errors -join "; "))
+    }
+
+    return Invoke-TrackingImportFromData `
+        -Label $Label `
+        -QR $QR `
+        -Derivat $normalizedDerivat `
+        -IStufe $normalizedIStufe `
+        -DryRun:$DryRun
 }
