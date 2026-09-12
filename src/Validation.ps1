@@ -44,24 +44,60 @@ function Get-AssignmentKey {
 
 function ConvertFrom-TrackingString {
     param(
+        [AllowNull()]
         [string]$InputString
+    )
+
+    if ([string]::IsNullOrWhiteSpace($InputString)) {
+        throw "Tracking-String ist leer"
+    }
+
+    $allowedKeys = @(
+        "PN",
+        "SN",
+        "HW",
+        "SW"
     )
 
     $data = @{}
 
-    foreach ($part in ($InputString -split ";")) {
-        if ($part -notmatch "=") {
+    $segments = $InputString -split ";"
+
+    foreach ($segmentRaw in $segments) {
+        $segment = $segmentRaw.Trim()
+
+        # Ein abschließendes Semikolon oder zusätzliche Leersegmente
+        # werden toleriert.
+        if ([string]::IsNullOrWhiteSpace($segment)) {
             continue
         }
 
-        $kv = $part -split "=", 2
+        if ($segment -notmatch "=") {
+            throw "Ungültiges Segment ohne '=': '$segment'"
+        }
+
+        $kv = $segment -split "=", 2
 
         $key = Get-NormalizedText $kv[0]
         $value = Get-NormalizedText $kv[1]
 
-        if (-not [string]::IsNullOrWhiteSpace($key)) {
-            $data[$key] = $value
+        if ([string]::IsNullOrWhiteSpace($key)) {
+            throw "Tracking-Schlüssel darf nicht leer sein"
         }
+
+        if ($key -notin $allowedKeys) {
+            throw "Unbekannter Tracking-Schlüssel: '$key'"
+        }
+
+        if ($data.ContainsKey($key)) {
+            throw "Tracking-Schlüssel '$key' ist mehrfach vorhanden"
+        }
+
+        $data[$key] = $value
+    }
+
+    if ($data.Count -eq 0) {
+        throw "Tracking-String enthält keine verwertbaren Daten"
     }
 
     return [pscustomobject]@{
