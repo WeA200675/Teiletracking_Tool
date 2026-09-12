@@ -3,679 +3,275 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <title>Teiletracking – Prototyp</title>
-
     <link rel="stylesheet" href="./styles.css">
 </head>
-
 <body>
-
     <main class="app">
-
         <header class="app-header">
             <div>
                 <p class="eyebrow">Lokaler Prototyp</p>
                 <h1>Teiletracking</h1>
-
-                <p class="subtitle">
-                    Steuergerät prüfen und einem Derivat /
-                    einer I-Stufe zuordnen
-                </p>
+                <p class="subtitle">Steuergerät prüfen und einem Derivat / einer I-Stufe zuordnen</p>
             </div>
-
-            <div
-                id="dataStatus"
-                class="data-status"
-            >
-                Lade Testdaten …
-            </div>
+            <div id="dataStatus" class="data-status">Lade Testdaten …</div>
         </header>
 
+        <section class="card">
+            <h2>1. Fahrzeugzuordnung</h2>
+            <div class="form-grid">
+                <label class="field">
+                    <span>Derivat</span>
+                    <select id="derivat">
+                        <option value="">Bitte wählen</option>
+                    </select>
+                </label>
+                <label class="field">
+                    <span>I-Stufe</span>
+                    <select id="iStufe">
+                        <option value="">Bitte wählen</option>
+                    </select>
+                </label>
+            </div>
+        </section>
 
         <section class="card">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">Stammdaten</p>
+                    <h2>Derivate und I-Stufen pflegen</h2>
+                </div>
+            </div>
 
-            <h2>1. Fahrzeugzuordnung</h2>
+            <p class="hint master-data-intro">
+                Neu angelegte Werte und Statusänderungen werden lokal im Browser gespeichert.
+            </p>
 
-            <div class="form-grid">
+            <div class="master-data-grid">
+                <div class="master-data-panel">
+                    <h3>Derivat hinzufügen</h3>
+                    <label class="field">
+                        <span>Derivat-Code</span>
+                        <input id="newDerivatCode" type="text" autocomplete="off" placeholder="z. B. G80">
+                    </label>
+                    <label class="field">
+                        <span>Beschreibung</span>
+                        <input id="newDerivatDescription" type="text" autocomplete="off" placeholder="optional">
+                    </label>
+                    <button id="addDerivatButton" class="button button-secondary" type="button">
+                        Derivat hinzufügen
+                    </button>
+                </div>
+
+                <div class="master-data-panel">
+                    <h3>I-Stufe hinzufügen</h3>
+                    <label class="field">
+                        <span>I-Stufe</span>
+                        <input id="newIStufeCode" type="text" autocomplete="off" placeholder="z. B. S15A-26-11-500">
+                    </label>
+                    <label class="field">
+                        <span>Beschreibung</span>
+                        <input id="newIStufeDescription" type="text" autocomplete="off" placeholder="optional">
+                    </label>
+                    <button id="addIStufeButton" class="button button-secondary" type="button">
+                        I-Stufe hinzufügen
+                    </button>
+                </div>
+            </div>
+
+            <div id="masterDataMessage" class="master-data-message hidden" aria-live="polite"></div>
+
+            <div class="master-data-overview">
+                <div>
+                    <strong id="derivatCount">0</strong>
+                    <span>Derivate gesamt</span>
+                </div>
+                <div>
+                    <strong id="iStufeCount">0</strong>
+                    <span>I-Stufen gesamt</span>
+                </div>
+                <div>
+                    <strong id="localMasterDataCount">0</strong>
+                    <span>lokal ergänzt</span>
+                </div>
+            </div>
+
+            <div class="master-data-lists">
+                <section class="master-data-list-section">
+                    <div class="master-data-list-heading">
+                        <p class="eyebrow">Übersicht</p>
+                        <h3>Derivate</h3>
+                    </div>
+                    <div id="derivateList" class="master-data-list"></div>
+                </section>
+
+                <section class="master-data-list-section">
+                    <div class="master-data-list-heading">
+                        <p class="eyebrow">Übersicht</p>
+                        <h3>I-Stufen</h3>
+                    </div>
+                    <div id="iStufenList" class="master-data-list"></div>
+                </section>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>2. Teileinformationen</h2>
+
+            <div class="input-columns">
+                <label class="field">
+                    <span>Label</span>
+                    <textarea id="labelInput" rows="5" spellcheck="false"
+                        placeholder="PN=1234567;SN=SN001;HW=HW1;SW=SW1"></textarea>
+                </label>
+
+                <label class="field">
+                    <span>QR-Code</span>
+                    <textarea id="qrInput" rows="5" spellcheck="false"
+                        placeholder="PN=1234567;SN=SN001;HW=HW1;SW=SW1"></textarea>
+                </label>
+            </div>
+
+            <p class="hint">
+                Unterstützte Schlüssel: PN, SN, HW und SW. PN und SN sind Pflichtfelder.
+            </p>
+        </section>
+
+        <section class="actions">
+            <button id="checkButton" class="button button-primary" type="button">Prüfen</button>
+            <button id="saveButton" class="button button-secondary" type="button" disabled>
+                Lokal speichern
+            </button>
+            <button id="resetButton" class="button button-ghost" type="button">Zurücksetzen</button>
+        </section>
+
+        <section id="resultCard" class="card result-card hidden" aria-live="polite">
+            <div class="result-header">
+                <div>
+                    <p class="eyebrow">Prüfergebnis</p>
+                    <h2 id="resultTitle">–</h2>
+                </div>
+                <span id="statusBadge" class="status-badge">–</span>
+            </div>
+
+            <p id="resultMessage" class="result-message"></p>
+
+            <section class="comparison-section">
+                <div class="comparison-heading">
+                    <h3>Label / QR Vergleich</h3>
+                    <span id="comparisonSummary" class="comparison-summary">–</span>
+                </div>
+
+                <div class="comparison-table">
+                    <div class="comparison-row comparison-header">
+                        <div>Feld</div>
+                        <div>Label</div>
+                        <div>QR-Code</div>
+                        <div>Status</div>
+                    </div>
+
+                    <div id="comparisonPartNumber" class="comparison-row">
+                        <div class="comparison-field">PartNumber</div>
+                        <div id="labelPartNumber" class="comparison-value">–</div>
+                        <div id="qrPartNumber" class="comparison-value">–</div>
+                        <div id="partNumberStatus" class="comparison-status">–</div>
+                    </div>
+
+                    <div id="comparisonSerialNumber" class="comparison-row">
+                        <div class="comparison-field">SerialNumber</div>
+                        <div id="labelSerialNumber" class="comparison-value">–</div>
+                        <div id="qrSerialNumber" class="comparison-value">–</div>
+                        <div id="serialNumberStatus" class="comparison-status">–</div>
+                    </div>
+
+                    <div id="comparisonHardware" class="comparison-row">
+                        <div class="comparison-field">Hardware</div>
+                        <div id="labelHardware" class="comparison-value">–</div>
+                        <div id="qrHardware" class="comparison-value">–</div>
+                        <div id="hardwareStatus" class="comparison-status">–</div>
+                    </div>
+
+                    <div id="comparisonSoftware" class="comparison-row">
+                        <div class="comparison-field">Software</div>
+                        <div id="labelSoftware" class="comparison-value">–</div>
+                        <div id="qrSoftware" class="comparison-value">–</div>
+                        <div id="softwareStatus" class="comparison-status">–</div>
+                    </div>
+                </div>
+            </section>
+
+            <h3 class="technical-heading">Zuordnung</h3>
+
+            <dl class="result-data">
+                <div><dt>PartNumber</dt><dd id="resultPartNumber">–</dd></div>
+                <div><dt>SerialNumber</dt><dd id="resultSerialNumber">–</dd></div>
+                <div><dt>Derivat</dt><dd id="resultDerivat">–</dd></div>
+                <div><dt>I-Stufe</dt><dd id="resultIStufe">–</dd></div>
+                <div><dt>DeviceKey</dt><dd id="resultDeviceKey">–</dd></div>
+                <div><dt>AssignmentKey</dt><dd id="resultAssignmentKey">–</dd></div>
+            </dl>
+        </section>
+
+        <section class="card">
+            <div class="section-heading tracking-heading">
+                <div>
+                    <p class="eyebrow">Tracking-Historie</p>
+                    <h2>Teile und Steuergeräte</h2>
+                </div>
+                <span id="savedCount" class="counter">0</span>
+            </div>
+
+            <p class="hint tracking-intro">
+                Basis-Testdaten und lokal gespeicherte Datensätze werden gemeinsam angezeigt.
+                Lokale Datensätze bleiben nach einem Browser-Reload erhalten.
+            </p>
+
+            <div class="tracking-filter-grid">
+                <label class="field tracking-search">
+                    <span>Suche</span>
+                    <input id="trackingSearch" type="search" autocomplete="off"
+                        placeholder="PN, SN, DeviceKey oder AssignmentKey">
+                </label>
+
+                <label class="field">
+                    <span>Status</span>
+                    <select id="trackingStatusFilter">
+                        <option value="">Alle Status</option>
+                        <option value="OK">OK</option>
+                        <option value="DOUBLE_DERIVATIVE">DOUBLE_DERIVATIVE</option>
+                        <option value="LABEL_QR_MISMATCH">LABEL_QR_MISMATCH</option>
+                        <option value="DUPLICATE">DUPLICATE</option>
+                    </select>
+                </label>
 
                 <label class="field">
                     <span>Derivat</span>
-
-                    <select id="derivat">
-                        <option value="">
-                            Bitte wählen
-                        </option>
+                    <select id="trackingDerivatFilter">
+                        <option value="">Alle Derivate</option>
                     </select>
                 </label>
-
 
                 <label class="field">
                     <span>I-Stufe</span>
-
-                    <select id="iStufe">
-                        <option value="">
-                            Bitte wählen
-                        </option>
+                    <select id="trackingIStufeFilter">
+                        <option value="">Alle I-Stufen</option>
                     </select>
                 </label>
-
             </div>
 
+            <div class="tracking-toolbar">
+                <span id="trackingResultInfo" class="tracking-result-info">0 Datensätze</span>
+                <button id="resetTrackingFiltersButton" class="button button-ghost button-small" type="button">
+                    Filter zurücksetzen
+                </button>
+            </div>
+
+            <div id="savedItems" class="saved-items empty-state">
+                Noch keine Datensätze vorhanden.
+            </div>
         </section>
-
-
-        <section class="card">
-
-            <div class="section-heading">
-
-                <div>
-                    <p class="eyebrow">
-                        Stammdaten
-                    </p>
-
-                    <h2>
-                        Derivate und I-Stufen pflegen
-                    </h2>
-                </div>
-
-            </div>
-
-
-            <p class="hint master-data-intro">
-                Neu angelegte Werte werden lokal im Browser
-                gespeichert und stehen sofort in der
-                Fahrzeugzuordnung zur Verfügung.
-            </p>
-
-
-            <div class="master-data-grid">
-
-                <div class="master-data-panel">
-
-                    <h3>
-                        Derivat hinzufügen
-                    </h3>
-
-                    <label class="field">
-                        <span>
-                            Derivat-Code
-                        </span>
-
-                        <input
-                            id="newDerivatCode"
-                            type="text"
-                            autocomplete="off"
-                            placeholder="z. B. G80"
-                        >
-                    </label>
-
-                    <label class="field">
-                        <span>
-                            Beschreibung
-                        </span>
-
-                        <input
-                            id="newDerivatDescription"
-                            type="text"
-                            autocomplete="off"
-                            placeholder="optional"
-                        >
-                    </label>
-
-                    <button
-                        id="addDerivatButton"
-                        class="button button-secondary"
-                        type="button"
-                    >
-                        Derivat hinzufügen
-                    </button>
-
-                </div>
-
-
-                <div class="master-data-panel">
-
-                    <h3>
-                        I-Stufe hinzufügen
-                    </h3>
-
-                    <label class="field">
-                        <span>
-                            I-Stufe
-                        </span>
-
-                        <input
-                            id="newIStufeCode"
-                            type="text"
-                            autocomplete="off"
-                            placeholder="z. B. S15A-26-11-500"
-                        >
-                    </label>
-
-                    <label class="field">
-                        <span>
-                            Beschreibung
-                        </span>
-
-                        <input
-                            id="newIStufeDescription"
-                            type="text"
-                            autocomplete="off"
-                            placeholder="optional"
-                        >
-                    </label>
-
-                    <button
-                        id="addIStufeButton"
-                        class="button button-secondary"
-                        type="button"
-                    >
-                        I-Stufe hinzufügen
-                    </button>
-
-                </div>
-
-            </div>
-
-
-            <div
-                id="masterDataMessage"
-                class="master-data-message hidden"
-                aria-live="polite"
-            ></div>
-
-
-            <div class="master-data-overview">
-
-                <div>
-                    <strong id="derivatCount">
-                        0
-                    </strong>
-
-                    <span>
-                        Derivate gesamt
-                    </span>
-                </div>
-
-                <div>
-                    <strong id="iStufeCount">
-                        0
-                    </strong>
-
-                    <span>
-                        I-Stufen gesamt
-                    </span>
-                </div>
-
-                <div>
-                    <strong id="localMasterDataCount">
-                        0
-                    </strong>
-
-                    <span>
-                        lokal ergänzt
-                    </span>
-                </div>
-
-            </div>
-
-
-            <div class="master-data-lists">
-
-                <section class="master-data-list-section">
-
-                    <div class="master-data-list-heading">
-
-                        <div>
-                            <p class="eyebrow">
-                                Übersicht
-                            </p>
-
-                            <h3>
-                                Derivate
-                            </h3>
-                        </div>
-
-                    </div>
-
-                    <div
-                        id="derivateList"
-                        class="master-data-list"
-                    ></div>
-
-                </section>
-
-
-                <section class="master-data-list-section">
-
-                    <div class="master-data-list-heading">
-
-                        <div>
-                            <p class="eyebrow">
-                                Übersicht
-                            </p>
-
-                            <h3>
-                                I-Stufen
-                            </h3>
-                        </div>
-
-                    </div>
-
-                    <div
-                        id="iStufenList"
-                        class="master-data-list"
-                    ></div>
-
-                </section>
-
-            </div>
-
-        </section>
-
-
-        <section class="card">
-
-            <h2>
-                2. Teileinformationen
-            </h2>
-
-            <div class="input-columns">
-
-                <label class="field">
-
-                    <span>
-                        Label
-                    </span>
-
-                    <textarea
-                        id="labelInput"
-                        rows="5"
-                        spellcheck="false"
-                        placeholder="PN=1234567;SN=SN001;HW=HW1;SW=SW1"
-                    ></textarea>
-
-                </label>
-
-
-                <label class="field">
-
-                    <span>
-                        QR-Code
-                    </span>
-
-                    <textarea
-                        id="qrInput"
-                        rows="5"
-                        spellcheck="false"
-                        placeholder="PN=1234567;SN=SN001;HW=HW1;SW=SW1"
-                    ></textarea>
-
-                </label>
-
-            </div>
-
-
-            <p class="hint">
-                Unterstützte Schlüssel:
-                PN, SN, HW und SW.
-                PN und SN sind Pflichtfelder.
-            </p>
-
-        </section>
-
-
-        <section class="actions">
-
-            <button
-                id="checkButton"
-                class="button button-primary"
-                type="button"
-            >
-                Prüfen
-            </button>
-
-            <button
-                id="saveButton"
-                class="button button-secondary"
-                type="button"
-                disabled
-            >
-                Lokal speichern
-            </button>
-
-            <button
-                id="resetButton"
-                class="button button-ghost"
-                type="button"
-            >
-                Zurücksetzen
-            </button>
-
-        </section>
-
-
-        <section
-            id="resultCard"
-            class="card result-card hidden"
-            aria-live="polite"
-        >
-
-            <div class="result-header">
-
-                <div>
-                    <p class="eyebrow">
-                        Prüfergebnis
-                    </p>
-
-                    <h2 id="resultTitle">
-                        –
-                    </h2>
-                </div>
-
-                <span
-                    id="statusBadge"
-                    class="status-badge"
-                >
-                    –
-                </span>
-
-            </div>
-
-
-            <p
-                id="resultMessage"
-                class="result-message"
-            ></p>
-
-
-            <section class="comparison-section">
-
-                <div class="comparison-heading">
-
-                    <h3>
-                        Label / QR Vergleich
-                    </h3>
-
-                    <span
-                        id="comparisonSummary"
-                        class="comparison-summary"
-                    >
-                        –
-                    </span>
-
-                </div>
-
-
-                <div class="comparison-table">
-
-                    <div
-                        class="comparison-row comparison-header"
-                    >
-                        <div>
-                            Feld
-                        </div>
-
-                        <div>
-                            Label
-                        </div>
-
-                        <div>
-                            QR-Code
-                        </div>
-
-                        <div>
-                            Status
-                        </div>
-                    </div>
-
-
-                    <div
-                        id="comparisonPartNumber"
-                        class="comparison-row"
-                    >
-
-                        <div class="comparison-field">
-                            PartNumber
-                        </div>
-
-                        <div
-                            id="labelPartNumber"
-                            class="comparison-value"
-                        >
-                            –
-                        </div>
-
-                        <div
-                            id="qrPartNumber"
-                            class="comparison-value"
-                        >
-                            –
-                        </div>
-
-                        <div
-                            id="partNumberStatus"
-                            class="comparison-status"
-                        >
-                            –
-                        </div>
-
-                    </div>
-
-
-                    <div
-                        id="comparisonSerialNumber"
-                        class="comparison-row"
-                    >
-
-                        <div class="comparison-field">
-                            SerialNumber
-                        </div>
-
-                        <div
-                            id="labelSerialNumber"
-                            class="comparison-value"
-                        >
-                            –
-                        </div>
-
-                        <div
-                            id="qrSerialNumber"
-                            class="comparison-value"
-                        >
-                            –
-                        </div>
-
-                        <div
-                            id="serialNumberStatus"
-                            class="comparison-status"
-                        >
-                            –
-                        </div>
-
-                    </div>
-
-
-                    <div
-                        id="comparisonHardware"
-                        class="comparison-row"
-                    >
-
-                        <div class="comparison-field">
-                            Hardware
-                        </div>
-
-                        <div
-                            id="labelHardware"
-                            class="comparison-value"
-                        >
-                            –
-                        </div>
-
-                        <div
-                            id="qrHardware"
-                            class="comparison-value"
-                        >
-                            –
-                        </div>
-
-                        <div
-                            id="hardwareStatus"
-                            class="comparison-status"
-                        >
-                            –
-                        </div>
-
-                    </div>
-
-
-                    <div
-                        id="comparisonSoftware"
-                        class="comparison-row"
-                    >
-
-                        <div class="comparison-field">
-                            Software
-                        </div>
-
-                        <div
-                            id="labelSoftware"
-                            class="comparison-value"
-                        >
-                            –
-                        </div>
-
-                        <div
-                            id="qrSoftware"
-                            class="comparison-value"
-                        >
-                            –
-                        </div>
-
-                        <div
-                            id="softwareStatus"
-                            class="comparison-status"
-                        >
-                            –
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </section>
-
-
-            <h3 class="technical-heading">
-                Zuordnung
-            </h3>
-
-
-            <dl class="result-data">
-
-                <div>
-                    <dt>
-                        PartNumber
-                    </dt>
-
-                    <dd id="resultPartNumber">
-                        –
-                    </dd>
-                </div>
-
-                <div>
-                    <dt>
-                        SerialNumber
-                    </dt>
-
-                    <dd id="resultSerialNumber">
-                        –
-                    </dd>
-                </div>
-
-                <div>
-                    <dt>
-                        Derivat
-                    </dt>
-
-                    <dd id="resultDerivat">
-                        –
-                    </dd>
-                </div>
-
-                <div>
-                    <dt>
-                        I-Stufe
-                    </dt>
-
-                    <dd id="resultIStufe">
-                        –
-                    </dd>
-                </div>
-
-                <div>
-                    <dt>
-                        DeviceKey
-                    </dt>
-
-                    <dd id="resultDeviceKey">
-                        –
-                    </dd>
-                </div>
-
-                <div>
-                    <dt>
-                        AssignmentKey
-                    </dt>
-
-                    <dd id="resultAssignmentKey">
-                        –
-                    </dd>
-                </div>
-
-            </dl>
-
-        </section>
-
-
-        <section class="card">
-
-            <div class="section-heading">
-
-                <div>
-                    <p class="eyebrow">
-                        Lokale Sitzung
-                    </p>
-
-                    <h2>
-                        Neu gespeicherte Datensätze
-                    </h2>
-                </div>
-
-                <span
-                    id="savedCount"
-                    class="counter"
-                >
-                    0
-                </span>
-
-            </div>
-
-
-            <div
-                id="savedItems"
-                class="saved-items empty-state"
-            >
-                Noch keine Datensätze lokal gespeichert.
-            </div>
-
-        </section>
-
     </main>
 
-
     <script src="./app.js"></script>
-
 </body>
 </html>
