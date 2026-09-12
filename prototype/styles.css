@@ -1155,3 +1155,46 @@ body.detail-open {
     }
 }
 
+.tracking-toolbar-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tracking-transfer-message {
+    margin: 0 0 14px;
+    padding: 12px 14px;
+    border-radius: 9px;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.tracking-transfer-message.success {
+    background: var(--ok-bg);
+    color: var(--ok-text);
+}
+
+.tracking-transfer-message.warning {
+    background: var(--double-bg);
+    color: var(--double-text);
+}
+
+.tracking-transfer-message.error {
+    background: var(--error-bg);
+    color: var(--error-text);
+}
+
+@media (max-width: 720px) {
+    .tracking-toolbar-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+        width: 100%;
+    }
+
+    .tracking-toolbar-actions .button {
+        width: 100%;
+    }
+}
+

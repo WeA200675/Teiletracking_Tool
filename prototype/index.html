@@ -261,10 +261,54 @@
 
             <div class="tracking-toolbar">
                 <span id="trackingResultInfo" class="tracking-result-info">0 Datensätze</span>
-                <button id="resetTrackingFiltersButton" class="button button-ghost button-small" type="button">
-                    Filter zurücksetzen
-                </button>
+
+                <div class="tracking-toolbar-actions">
+                    <button
+                        id="exportTrackingJsonButton"
+                        class="button button-ghost button-small"
+                        type="button"
+                    >
+                        JSON exportieren
+                    </button>
+
+                    <button
+                        id="exportTrackingCsvButton"
+                        class="button button-ghost button-small"
+                        type="button"
+                    >
+                        CSV exportieren
+                    </button>
+
+                    <button
+                        id="importTrackingJsonButton"
+                        class="button button-secondary button-small"
+                        type="button"
+                    >
+                        JSON importieren
+                    </button>
+
+                    <button
+                        id="resetTrackingFiltersButton"
+                        class="button button-ghost button-small"
+                        type="button"
+                    >
+                        Filter zurücksetzen
+                    </button>
+                </div>
             </div>
+
+            <input
+                id="trackingImportFile"
+                class="hidden"
+                type="file"
+                accept="application/json,.json"
+            >
+
+            <div
+                id="trackingTransferMessage"
+                class="tracking-transfer-message hidden"
+                aria-live="polite"
+            ></div>
 
             <div id="savedItems" class="saved-items empty-state">
                 Noch keine Datensätze vorhanden.

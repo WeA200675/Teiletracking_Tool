@@ -74,7 +74,12 @@ const elements = {
     trackingDetailSource: document.getElementById("trackingDetailSource"),
     trackingDetailStatus: document.getElementById("trackingDetailStatus"),
     trackingDetailContent: document.getElementById("trackingDetailContent"),
-    closeTrackingDetailButton: document.getElementById("closeTrackingDetailButton")
+    closeTrackingDetailButton: document.getElementById("closeTrackingDetailButton"),
+    exportTrackingJsonButton: document.getElementById("exportTrackingJsonButton"),
+    exportTrackingCsvButton: document.getElementById("exportTrackingCsvButton"),
+    importTrackingJsonButton: document.getElementById("importTrackingJsonButton"),
+    trackingImportFile: document.getElementById("trackingImportFile"),
+    trackingTransferMessage: document.getElementById("trackingTransferMessage")
 };
 
 function normalizeText(value) {
@@ -1285,6 +1290,451 @@ function addIStufe() {
     );
 }
 
+
+function showTrackingTransferMessage(message, type) {
+    elements.trackingTransferMessage.classList.remove(
+        "hidden",
+        "success",
+        "warning",
+        "error"
+    );
+
+    elements.trackingTransferMessage.classList.add(type);
+    elements.trackingTransferMessage.textContent = message;
+}
+
+function clearTrackingTransferMessage() {
+    elements.trackingTransferMessage.classList.add("hidden");
+    elements.trackingTransferMessage.classList.remove(
+        "success",
+        "warning",
+        "error"
+    );
+    elements.trackingTransferMessage.textContent = "";
+}
+
+function getTrackingExportRecords() {
+    return state.savedItems.map(record => ({
+        PartNumber: normalizeText(record.PartNumber),
+        SerialNumber: normalizeText(record.SerialNumber),
+        LabelPartNumber: normalizeText(record.LabelPartNumber),
+        QRPartNumber: normalizeText(record.QRPartNumber),
+        LabelSerialNumber: normalizeText(record.LabelSerialNumber),
+        QRSerialNumber: normalizeText(record.QRSerialNumber),
+        Derivat: normalizeText(record.Derivat),
+        IStufe: normalizeText(record.IStufe),
+        LabelHardware: normalizeText(record.LabelHardware),
+        QRHardware: normalizeText(record.QRHardware),
+        LabelSoftware: normalizeText(record.LabelSoftware),
+        QRSoftware: normalizeText(record.QRSoftware),
+        DeviceKey: normalizeText(record.DeviceKey),
+        AssignmentKey: normalizeText(record.AssignmentKey),
+        DuplicateStatus: normalizeText(record.DuplicateStatus || "NEW"),
+        ValidationStatus: normalizeText(record.ValidationStatus || "OK"),
+        DoppelDerivat: Boolean(record.DoppelDerivat),
+        MismatchFields: Array.isArray(record.MismatchFields)
+            ? [...record.MismatchFields]
+            : [],
+        SavedAt: record.SavedAt || null
+    }));
+}
+
+function getTimestampForFileName() {
+    const now = new Date();
+
+    const parts = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, "0"),
+        String(now.getDate()).padStart(2, "0"),
+        "-",
+        String(now.getHours()).padStart(2, "0"),
+        String(now.getMinutes()).padStart(2, "0"),
+        String(now.getSeconds()).padStart(2, "0")
+    ];
+
+    return parts.join("");
+}
+
+function downloadTextFile(fileName, content, mimeType) {
+    const blob = new Blob(
+        [content],
+        { type: mimeType }
+    );
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = fileName;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    URL.revokeObjectURL(url);
+}
+
+function exportTrackingJson() {
+    clearTrackingTransferMessage();
+
+    const records = getTrackingExportRecords();
+
+    if (records.length === 0) {
+        showTrackingTransferMessage(
+            "Es sind keine lokalen Tracking-Datensätze für den Export vorhanden.",
+            "warning"
+        );
+        return;
+    }
+
+    const payload = {
+        format: "teiletracking.localTracking",
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        recordCount: records.length,
+        records
+    };
+
+    const content = JSON.stringify(
+        payload,
+        null,
+        2
+    );
+
+    downloadTextFile(
+        `teiletracking-${getTimestampForFileName()}.json`,
+        content,
+        "application/json;charset=utf-8"
+    );
+
+    showTrackingTransferMessage(
+        `${records.length} lokale Datensätze wurden als JSON exportiert.`,
+        "success"
+    );
+}
+
+function escapeCsvValue(value) {
+    const text =
+        value === null || value === undefined
+            ? ""
+            : String(value);
+
+    return `"${text.replaceAll('"', '""')}"`;
+}
+
+function exportTrackingCsv() {
+    clearTrackingTransferMessage();
+
+    const records = getTrackingExportRecords();
+
+    if (records.length === 0) {
+        showTrackingTransferMessage(
+            "Es sind keine lokalen Tracking-Datensätze für den Export vorhanden.",
+            "warning"
+        );
+        return;
+    }
+
+    const columns = [
+        "PartNumber",
+        "SerialNumber",
+        "LabelPartNumber",
+        "QRPartNumber",
+        "LabelSerialNumber",
+        "QRSerialNumber",
+        "Derivat",
+        "IStufe",
+        "LabelHardware",
+        "QRHardware",
+        "LabelSoftware",
+        "QRSoftware",
+        "DeviceKey",
+        "AssignmentKey",
+        "DuplicateStatus",
+        "ValidationStatus",
+        "DoppelDerivat",
+        "MismatchFields",
+        "SavedAt"
+    ];
+
+    const rows = [
+        columns.map(escapeCsvValue).join(";")
+    ];
+
+    for (const record of records) {
+        const row = columns.map(column => {
+            if (column === "MismatchFields") {
+                return escapeCsvValue(
+                    Array.isArray(record.MismatchFields)
+                        ? record.MismatchFields.join(",")
+                        : ""
+                );
+            }
+
+            if (column === "DoppelDerivat") {
+                return escapeCsvValue(
+                    record.DoppelDerivat ? "TRUE" : "FALSE"
+                );
+            }
+
+            return escapeCsvValue(record[column]);
+        });
+
+        rows.push(row.join(";"));
+    }
+
+    const content =
+        "\uFEFF" +
+        rows.join("\r\n");
+
+    downloadTextFile(
+        `teiletracking-${getTimestampForFileName()}.csv`,
+        content,
+        "text/csv;charset=utf-8"
+    );
+
+    showTrackingTransferMessage(
+        `${records.length} lokale Datensätze wurden als CSV exportiert.`,
+        "success"
+    );
+}
+
+function getImportRecordsFromPayload(payload) {
+    if (Array.isArray(payload)) {
+        return payload;
+    }
+
+    if (
+        payload &&
+        typeof payload === "object" &&
+        Array.isArray(payload.records)
+    ) {
+        return payload.records;
+    }
+
+    throw new Error(
+        "Die JSON-Datei enthält kein unterstütztes Tracking-Format."
+    );
+}
+
+function validateImportedRecord(record, index) {
+    if (!record || typeof record !== "object") {
+        throw new Error(
+            `Datensatz ${index + 1} ist kein gültiges Objekt.`
+        );
+    }
+
+    const partNumber = normalizeText(
+        record.PartNumber || record.LabelPartNumber
+    );
+
+    const serialNumber = normalizeText(
+        record.SerialNumber || record.LabelSerialNumber
+    );
+
+    const derivat = normalizeText(record.Derivat);
+    const iStufe = normalizeText(record.IStufe);
+
+    const missing = [];
+
+    if (!partNumber) {
+        missing.push("PartNumber");
+    }
+
+    if (!serialNumber) {
+        missing.push("SerialNumber");
+    }
+
+    if (!derivat) {
+        missing.push("Derivat");
+    }
+
+    if (!iStufe) {
+        missing.push("IStufe");
+    }
+
+    if (missing.length > 0) {
+        throw new Error(
+            `Datensatz ${index + 1}: Pflichtfelder fehlen: ${missing.join(", ")}.`
+        );
+    }
+
+    const normalized = normalizeStoredTrackingRecord({
+        ...record,
+        PartNumber: partNumber,
+        SerialNumber: serialNumber,
+        Derivat: derivat,
+        IStufe: iStufe,
+        DeviceKey: getDeviceKey(
+            partNumber,
+            serialNumber
+        ),
+        AssignmentKey: getAssignmentKey(
+            partNumber,
+            serialNumber,
+            derivat,
+            iStufe
+        ),
+        LocalId: createLocalRecordId(),
+        SavedAt:
+            record.SavedAt ||
+            new Date().toISOString()
+    });
+
+    return normalized;
+}
+
+function importTrackingRecords(records) {
+    const existingAssignmentKeys = new Set(
+        getAllTrackingItems()
+            .map(item => normalizeText(item.AssignmentKey))
+            .filter(Boolean)
+    );
+
+    let imported = 0;
+    let duplicates = 0;
+    let invalid = 0;
+
+    const errors = [];
+
+    records.forEach((record, index) => {
+        try {
+            const normalized =
+                validateImportedRecord(
+                    record,
+                    index
+                );
+
+            const assignmentKey =
+                normalizeText(
+                    normalized.AssignmentKey
+                );
+
+            if (
+                existingAssignmentKeys.has(
+                    assignmentKey
+                )
+            ) {
+                duplicates += 1;
+                return;
+            }
+
+            const sameDeviceExists =
+                getAllTrackingItems().some(
+                    item =>
+                        normalizeText(item.DeviceKey) ===
+                        normalizeText(
+                            normalized.DeviceKey
+                        )
+                ) ||
+                state.savedItems.some(
+                    item =>
+                        normalizeText(item.DeviceKey) ===
+                        normalizeText(
+                            normalized.DeviceKey
+                        )
+                );
+
+            if (
+                normalized.ValidationStatus !==
+                "LABEL_QR_MISMATCH"
+            ) {
+                normalized.DuplicateStatus =
+                    sameDeviceExists
+                        ? "DOUBLE_DERIVATIVE"
+                        : "NEW";
+
+                normalized.ValidationStatus =
+                    sameDeviceExists
+                        ? "DOUBLE_DERIVATIVE"
+                        : "OK";
+            }
+
+            normalized.DoppelDerivat =
+                sameDeviceExists;
+
+            state.savedItems.push(normalized);
+            existingAssignmentKeys.add(assignmentKey);
+            imported += 1;
+        }
+        catch (error) {
+            invalid += 1;
+
+            if (errors.length < 5) {
+                errors.push(error.message);
+            }
+        }
+    });
+
+    saveLocalTrackingData();
+    refreshTrackingFilterOptions();
+    renderSavedItems();
+    updateDataStatus();
+
+    return {
+        imported,
+        duplicates,
+        invalid,
+        errors
+    };
+}
+
+async function importTrackingJsonFile(file) {
+    clearTrackingTransferMessage();
+
+    if (!file) {
+        return;
+    }
+
+    try {
+        const text = await file.text();
+        const payload = JSON.parse(text);
+        const records =
+            getImportRecordsFromPayload(payload);
+
+        const result =
+            importTrackingRecords(records);
+
+        const parts = [
+            `${result.imported} importiert`,
+            `${result.duplicates} Dubletten übersprungen`,
+            `${result.invalid} ungültig`
+        ];
+
+        const type =
+            result.invalid > 0
+                ? "warning"
+                : "success";
+
+        let message =
+            `Import abgeschlossen: ${parts.join(" · ")}.`;
+
+        if (result.errors.length > 0) {
+            message +=
+                ` Hinweise: ${result.errors.join(" | ")}`;
+        }
+
+        showTrackingTransferMessage(
+            message,
+            type
+        );
+    }
+    catch (error) {
+        showTrackingTransferMessage(
+            `Import fehlgeschlagen: ${error.message}`,
+            "error"
+        );
+    }
+    finally {
+        elements.trackingImportFile.value = "";
+    }
+}
+
+function openTrackingImportDialog() {
+    clearTrackingTransferMessage();
+    elements.trackingImportFile.click();
+}
+
 function getRecordValidationStatus(record) {
     const explicitStatus = normalizeText(
         record.ValidationStatus
@@ -2197,6 +2647,32 @@ document.addEventListener(
             !elements.trackingDetailOverlay.classList.contains("hidden")
         ) {
             closeTrackingDetail();
+        }
+    }
+);
+
+elements.exportTrackingJsonButton.addEventListener(
+    "click",
+    exportTrackingJson
+);
+
+elements.exportTrackingCsvButton.addEventListener(
+    "click",
+    exportTrackingCsv
+);
+
+elements.importTrackingJsonButton.addEventListener(
+    "click",
+    openTrackingImportDialog
+);
+
+elements.trackingImportFile.addEventListener(
+    "change",
+    event => {
+        const [file] = event.target.files || [];
+
+        if (file) {
+            importTrackingJsonFile(file);
         }
     }
 );
