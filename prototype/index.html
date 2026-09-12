@@ -272,6 +272,41 @@
         </section>
     </main>
 
+
+
+    <div
+        id="trackingDetailOverlay"
+        class="detail-overlay hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="trackingDetailTitle"
+    >
+        <section class="detail-dialog">
+            <div class="detail-header">
+                <div class="detail-heading-main">
+                    <p class="eyebrow">Datensatzdetails</p>
+                    <h2 id="trackingDetailTitle">–</h2>
+                    <div class="detail-header-badges">
+                        <span id="trackingDetailSource" class="record-source">–</span>
+                        <span id="trackingDetailStatus" class="status-badge">–</span>
+                    </div>
+                </div>
+
+                <button
+                    id="closeTrackingDetailButton"
+                    class="detail-close-button"
+                    type="button"
+                    aria-label="Detailansicht schließen"
+                    title="Schließen"
+                >
+                    ×
+                </button>
+            </div>
+
+            <div id="trackingDetailContent" class="detail-content"></div>
+        </section>
+    </div>
+
     <script src="./app.js"></script>
 </body>
 </html>

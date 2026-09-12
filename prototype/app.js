@@ -68,7 +68,13 @@ const elements = {
     trackingDerivatFilter: document.getElementById("trackingDerivatFilter"),
     trackingIStufeFilter: document.getElementById("trackingIStufeFilter"),
     trackingResultInfo: document.getElementById("trackingResultInfo"),
-    resetTrackingFiltersButton: document.getElementById("resetTrackingFiltersButton")
+    resetTrackingFiltersButton: document.getElementById("resetTrackingFiltersButton"),
+    trackingDetailOverlay: document.getElementById("trackingDetailOverlay"),
+    trackingDetailTitle: document.getElementById("trackingDetailTitle"),
+    trackingDetailSource: document.getElementById("trackingDetailSource"),
+    trackingDetailStatus: document.getElementById("trackingDetailStatus"),
+    trackingDetailContent: document.getElementById("trackingDetailContent"),
+    closeTrackingDetailButton: document.getElementById("closeTrackingDetailButton")
 };
 
 function normalizeText(value) {
@@ -1474,6 +1480,272 @@ function createTrackingDetail(label, value) {
     return detail;
 }
 
+
+function createDetailField(label, value, mono = true) {
+    const field = document.createElement("div");
+    field.className = "detail-field";
+
+    const labelElement = document.createElement("span");
+    labelElement.className = "detail-field-label";
+    labelElement.textContent = label;
+
+    const valueElement = document.createElement("span");
+    valueElement.className = mono
+        ? "detail-field-value mono"
+        : "detail-field-value";
+    valueElement.textContent = displayValue(value);
+
+    field.append(labelElement, valueElement);
+    return field;
+}
+
+function createDetailSection(titleText) {
+    const section = document.createElement("section");
+    section.className = "detail-section";
+
+    const title = document.createElement("h3");
+    title.textContent = titleText;
+
+    section.appendChild(title);
+    return section;
+}
+
+function createDetailComparisonRow(
+    fieldName,
+    labelValue,
+    qrValue
+) {
+    const row = document.createElement("div");
+    row.className = "detail-comparison-row";
+
+    const normalizedLabel = normalizeText(labelValue);
+    const normalizedQR = normalizeText(qrValue);
+    const matches = normalizedLabel === normalizedQR;
+
+    row.classList.add(matches ? "match" : "mismatch");
+
+    const field = document.createElement("div");
+    field.className = "detail-comparison-field";
+    field.textContent = fieldName;
+
+    const label = document.createElement("div");
+    label.className = "detail-comparison-value";
+    label.textContent = displayValue(normalizedLabel);
+
+    const qr = document.createElement("div");
+    qr.className = "detail-comparison-value";
+    qr.textContent = displayValue(normalizedQR);
+
+    const status = document.createElement("div");
+    status.className = "detail-comparison-status";
+    status.textContent = matches
+        ? "✓ Gleich"
+        : "⚠ Abweichung";
+
+    row.append(field, label, qr, status);
+    return row;
+}
+
+function openTrackingDetail(record) {
+    const status = getRecordValidationStatus(record);
+    const meta = getStatusMeta(status);
+    const isLocal = record.Source === "LOCAL";
+
+    const partNumber = normalizeText(
+        record.PartNumber || record.LabelPartNumber
+    );
+
+    const serialNumber = normalizeText(
+        record.SerialNumber || record.LabelSerialNumber
+    );
+
+    const labelPartNumber = normalizeText(
+        record.LabelPartNumber || partNumber
+    );
+
+    const qrPartNumber = normalizeText(
+        record.QRPartNumber || partNumber
+    );
+
+    const labelSerialNumber = normalizeText(
+        record.LabelSerialNumber || serialNumber
+    );
+
+    const qrSerialNumber = normalizeText(
+        record.QRSerialNumber || serialNumber
+    );
+
+    const labelHardware = normalizeText(record.LabelHardware);
+    const qrHardware = normalizeText(record.QRHardware);
+    const labelSoftware = normalizeText(record.LabelSoftware);
+    const qrSoftware = normalizeText(record.QRSoftware);
+
+    const assignmentKey = normalizeText(record.AssignmentKey) ||
+        getAssignmentKey(
+            partNumber,
+            serialNumber,
+            record.Derivat,
+            record.IStufe
+        );
+
+    const deviceKey = normalizeText(record.DeviceKey) ||
+        getDeviceKey(partNumber, serialNumber);
+
+    elements.trackingDetailTitle.textContent = assignmentKey;
+
+    elements.trackingDetailSource.className = isLocal
+        ? "record-source local"
+        : "record-source";
+    elements.trackingDetailSource.textContent = isLocal
+        ? "Lokal"
+        : "Basis";
+
+    elements.trackingDetailStatus.className =
+        `status-badge ${meta.cssClass}`;
+    elements.trackingDetailStatus.textContent = status;
+
+    elements.trackingDetailContent.innerHTML = "";
+
+    const assignmentSection = createDetailSection("Zuordnung");
+    const assignmentGrid = document.createElement("div");
+    assignmentGrid.className = "detail-grid";
+
+    assignmentGrid.append(
+        createDetailField("PartNumber", partNumber),
+        createDetailField("SerialNumber", serialNumber),
+        createDetailField("Derivat", record.Derivat),
+        createDetailField("I-Stufe", record.IStufe),
+        createDetailField("DeviceKey", deviceKey),
+        createDetailField("AssignmentKey", assignmentKey)
+    );
+
+    assignmentSection.appendChild(assignmentGrid);
+
+    const comparisonSection = createDetailSection("Label / QR Vergleich");
+    const comparison = document.createElement("div");
+    comparison.className = "detail-comparison";
+
+    const comparisonHeader = document.createElement("div");
+    comparisonHeader.className =
+        "detail-comparison-row detail-comparison-header";
+
+    for (const text of ["Feld", "Label", "QR-Code", "Status"]) {
+        const cell = document.createElement("div");
+        cell.textContent = text;
+        comparisonHeader.appendChild(cell);
+    }
+
+    comparison.append(
+        comparisonHeader,
+        createDetailComparisonRow(
+            "PartNumber",
+            labelPartNumber,
+            qrPartNumber
+        ),
+        createDetailComparisonRow(
+            "SerialNumber",
+            labelSerialNumber,
+            qrSerialNumber
+        ),
+        createDetailComparisonRow(
+            "Hardware",
+            labelHardware,
+            qrHardware
+        ),
+        createDetailComparisonRow(
+            "Software",
+            labelSoftware,
+            qrSoftware
+        )
+    );
+
+    comparisonSection.appendChild(comparison);
+
+    const statusSection = createDetailSection("Validierung");
+    const statusGrid = document.createElement("div");
+    statusGrid.className = "detail-grid";
+
+    statusGrid.append(
+        createDetailField("ValidationStatus", status),
+        createDetailField(
+            "DuplicateStatus",
+            record.DuplicateStatus || "NEW"
+        ),
+        createDetailField(
+            "DoppelDerivat",
+            record.DoppelDerivat === true ? "JA" : "NEIN",
+            false
+        ),
+        createDetailField(
+            "Abweichungsfelder",
+            Array.isArray(record.MismatchFields) &&
+            record.MismatchFields.length > 0
+                ? record.MismatchFields.join(", ")
+                : "KEINE",
+            false
+        )
+    );
+
+    statusSection.appendChild(statusGrid);
+
+    if (record.DoppelDerivat === true) {
+        const note = document.createElement("p");
+        note.className = "detail-note warning";
+        note.textContent =
+            "Dieses physische Teil ist zusätzlich einer weiteren Zuordnung zugeordnet (Doppelderivat).";
+        statusSection.appendChild(note);
+    }
+
+    if (
+        status === "LABEL_QR_MISMATCH" &&
+        Array.isArray(record.MismatchFields) &&
+        record.MismatchFields.length > 0
+    ) {
+        const note = document.createElement("p");
+        note.className = "detail-note error";
+        note.textContent =
+            `Label/QR-Abweichung in: ${record.MismatchFields.join(", ")}.`;
+        statusSection.appendChild(note);
+    }
+
+    const sourceSection = createDetailSection("Quelle");
+    const sourceGrid = document.createElement("div");
+    sourceGrid.className = "detail-grid";
+
+    sourceGrid.append(
+        createDetailField(
+            "Quelle",
+            isLocal ? "LOKALER BROWSER-SPEICHER" : "BASIS-TESTDATEN",
+            false
+        ),
+        createDetailField(
+            "Gespeichert am",
+            isLocal && record.SavedAt
+                ? new Date(record.SavedAt).toLocaleString("de-DE")
+                : "–",
+            false
+        )
+    );
+
+    sourceSection.appendChild(sourceGrid);
+
+    elements.trackingDetailContent.append(
+        assignmentSection,
+        comparisonSection,
+        statusSection,
+        sourceSection
+    );
+
+    elements.trackingDetailOverlay.classList.remove("hidden");
+    document.body.classList.add("detail-open");
+    elements.closeTrackingDetailButton.focus();
+}
+
+function closeTrackingDetail() {
+    elements.trackingDetailOverlay.classList.add("hidden");
+    document.body.classList.remove("detail-open");
+}
+
 function createTrackingItem(record) {
     const status = getRecordValidationStatus(record);
     const meta = getStatusMeta(status);
@@ -1574,6 +1846,20 @@ function createTrackingItem(record) {
     badge.textContent = status;
 
     actions.appendChild(badge);
+
+    const detailButton = document.createElement("button");
+    detailButton.type = "button";
+    detailButton.className = "mini-button";
+    detailButton.textContent = "Details";
+
+    detailButton.addEventListener(
+        "click",
+        () => {
+            openTrackingDetail(record);
+        }
+    );
+
+    actions.appendChild(detailButton);
 
     if (isLocal) {
         const deleteButton = document.createElement("button");
@@ -1887,6 +2173,32 @@ elements.trackingIStufeFilter.addEventListener(
 elements.resetTrackingFiltersButton.addEventListener(
     "click",
     resetTrackingFilters
+);
+
+elements.closeTrackingDetailButton.addEventListener(
+    "click",
+    closeTrackingDetail
+);
+
+elements.trackingDetailOverlay.addEventListener(
+    "click",
+    event => {
+        if (event.target === elements.trackingDetailOverlay) {
+            closeTrackingDetail();
+        }
+    }
+);
+
+document.addEventListener(
+    "keydown",
+    event => {
+        if (
+            event.key === "Escape" &&
+            !elements.trackingDetailOverlay.classList.contains("hidden")
+        ) {
+            closeTrackingDetail();
+        }
+    }
 );
 
 renderSavedItems();
