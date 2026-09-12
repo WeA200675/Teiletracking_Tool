@@ -189,13 +189,25 @@ function New-TrackingRecordFromData {
     $normalizedIStufe = Get-NormalizedText $IStufe
     $normalizedDuplicateStatus = Get-NormalizedText $DuplicateStatus
 
+    $labelPartNumber = Get-NormalizedText $Label.PartNumber
+    $qrPartNumber = Get-NormalizedText $QR.PartNumber
+
+    $labelSerialNumber = Get-NormalizedText $Label.SerialNumber
+    $qrSerialNumber = Get-NormalizedText $QR.SerialNumber
+
+    $labelHardware = Get-NormalizedText $Label.Hardware
+    $qrHardware = Get-NormalizedText $QR.Hardware
+
+    $labelSoftware = Get-NormalizedText $Label.Software
+    $qrSoftware = Get-NormalizedText $QR.Software
+
     $DeviceKey = Get-DeviceKey `
-        -PartNumber $Label.PartNumber `
-        -SerialNumber $Label.SerialNumber
+        -PartNumber $labelPartNumber `
+        -SerialNumber $labelSerialNumber
 
     $AssignmentKey = Get-AssignmentKey `
-        -PartNumber $Label.PartNumber `
-        -SerialNumber $Label.SerialNumber `
+        -PartNumber $labelPartNumber `
+        -SerialNumber $labelSerialNumber `
         -Derivat $normalizedDerivat `
         -IStufe $normalizedIStufe
 
@@ -217,19 +229,34 @@ function New-TrackingRecordFromData {
     }
 
     return [pscustomobject]@{
-        PartNumber       = Get-NormalizedText $Label.PartNumber
-        SerialNumber     = Get-NormalizedText $Label.SerialNumber
-        Derivat          = $normalizedDerivat
-        IStufe           = $normalizedIStufe
-        LabelHardware    = Get-NormalizedText $Label.Hardware
-        QRHardware       = Get-NormalizedText $QR.Hardware
-        LabelSoftware    = Get-NormalizedText $Label.Software
-        QRSoftware       = Get-NormalizedText $QR.Software
-        DeviceKey        = $DeviceKey
-        AssignmentKey    = $AssignmentKey
-        DuplicateStatus  = $normalizedDuplicateStatus
-        ValidationStatus = $ValidationStatus
-        DoppelDerivat    = ($normalizedDuplicateStatus -eq "DOUBLE_DERIVATIVE")
+        PartNumber        = $labelPartNumber
+        SerialNumber      = $labelSerialNumber
+
+        LabelPartNumber   = $labelPartNumber
+        QRPartNumber      = $qrPartNumber
+
+        LabelSerialNumber = $labelSerialNumber
+        QRSerialNumber    = $qrSerialNumber
+
+        Derivat           = $normalizedDerivat
+        IStufe            = $normalizedIStufe
+
+        LabelHardware     = $labelHardware
+        QRHardware        = $qrHardware
+
+        LabelSoftware     = $labelSoftware
+        QRSoftware        = $qrSoftware
+
+        DeviceKey         = $DeviceKey
+        AssignmentKey     = $AssignmentKey
+
+        DuplicateStatus   = $normalizedDuplicateStatus
+        ValidationStatus  = $ValidationStatus
+
+        DoppelDerivat     = (
+            $normalizedDuplicateStatus -eq
+            "DOUBLE_DERIVATIVE"
+        )
     }
 }
 
@@ -267,19 +294,31 @@ function Save-TrackingRecord {
     }
 
     $Values = @{
-        Title            = $Record.AssignmentKey
-        DeviceKey        = $Record.DeviceKey
-        AssignmentKey    = $Record.AssignmentKey
-        PartNumber       = $Record.PartNumber
-        SerialNumber     = $Record.SerialNumber
-        Derivat          = $Record.Derivat
-        IStufe           = $Record.IStufe
-        LabelHardware    = $Record.LabelHardware
-        QRHardware       = $Record.QRHardware
-        LabelSoftware    = $Record.LabelSoftware
-        QRSoftware       = $Record.QRSoftware
-        ValidationStatus = $Record.ValidationStatus
-        DoppelDerivat    = $Record.DoppelDerivat
+        Title             = $Record.AssignmentKey
+
+        DeviceKey         = $Record.DeviceKey
+        AssignmentKey     = $Record.AssignmentKey
+
+        PartNumber        = $Record.PartNumber
+        SerialNumber      = $Record.SerialNumber
+
+        LabelPartNumber   = $Record.LabelPartNumber
+        QRPartNumber      = $Record.QRPartNumber
+
+        LabelSerialNumber = $Record.LabelSerialNumber
+        QRSerialNumber    = $Record.QRSerialNumber
+
+        Derivat           = $Record.Derivat
+        IStufe            = $Record.IStufe
+
+        LabelHardware     = $Record.LabelHardware
+        QRHardware        = $Record.QRHardware
+
+        LabelSoftware     = $Record.LabelSoftware
+        QRSoftware        = $Record.QRSoftware
+
+        ValidationStatus  = $Record.ValidationStatus
+        DoppelDerivat     = $Record.DoppelDerivat
     }
 
     if ($DryRun) {
@@ -524,9 +563,6 @@ function Invoke-TrackingImportValidated {
         [switch]$DryRun
     )
 
-    # Label und QR werden für den gesamten Import genau einmal
-    # eingelesen und anschließend als strukturierte Daten
-    # weitergereicht.
     $Label = ConvertFrom-TrackingString $LabelString
     $QR = ConvertFrom-TrackingString $QRString
 

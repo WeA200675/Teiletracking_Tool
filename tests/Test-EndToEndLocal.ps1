@@ -299,6 +299,10 @@ Write-Host "TEST 9 OK: Inaktive I-Stufe wird blockiert"
 # TEST 10
 # Doppelderivat + Label/QR-Abweichung gleichzeitig
 #
+# Zusätzlich wird geprüft, dass die ursprünglichen Werte von
+# Label und QR getrennt im gespeicherten Datensatz erhalten
+# bleiben.
+#
 # Ausgangslage:
 # 1234567|SN001 existiert bereits in G70.
 #
@@ -309,9 +313,13 @@ Write-Host "TEST 9 OK: Inaktive I-Stufe wird blockiert"
 # Erwartung:
 # - ValidationStatus = LABEL_QR_MISMATCH
 # - DoppelDerivat = true
+# - LabelPartNumber = 1234567
+# - QRPartNumber = 1234568
+# - LabelSerialNumber = SN001
+# - QRSerialNumber = SN001
 #
-# Die Label/QR-Abweichung hat beim sichtbaren Status Priorität.
-# Die Doppelderivat-Information darf aber nicht verloren gehen.
+# DeviceKey und AssignmentKey basieren weiterhin bewusst
+# auf den Label-Daten.
 # ============================================================
 
 $countBefore = @(Get-MockSavedItems).Count
@@ -340,6 +348,22 @@ if (-not [bool]$saved["DoppelDerivat"]) {
     throw "TEST 10: DoppelDerivat wurde trotz bekanntem DeviceKey nicht auf true gesetzt"
 }
 
+if ($saved["LabelPartNumber"] -ne "1234567") {
+    throw "TEST 10: Falsche LabelPartNumber: $($saved['LabelPartNumber'])"
+}
+
+if ($saved["QRPartNumber"] -ne "1234568") {
+    throw "TEST 10: Falsche QRPartNumber: $($saved['QRPartNumber'])"
+}
+
+if ($saved["LabelSerialNumber"] -ne "SN001") {
+    throw "TEST 10: Falsche LabelSerialNumber: $($saved['LabelSerialNumber'])"
+}
+
+if ($saved["QRSerialNumber"] -ne "SN001") {
+    throw "TEST 10: Falsche QRSerialNumber: $($saved['QRSerialNumber'])"
+}
+
 if ($saved["DeviceKey"] -ne "1234567|SN001") {
     throw "TEST 10: Falscher DeviceKey: $($saved['DeviceKey'])"
 }
@@ -348,7 +372,7 @@ if ($saved["AssignmentKey"] -ne "1234567|SN001|G60|S15A-26-03-500") {
     throw "TEST 10: Falscher AssignmentKey: $($saved['AssignmentKey'])"
 }
 
-Write-Host "TEST 10 OK: LABEL_QR_MISMATCH hat Priorität und DoppelDerivat bleibt gesetzt"
+Write-Host "TEST 10 OK: Label/QR-Rohdaten getrennt gespeichert, Mismatch priorisiert und DoppelDerivat erhalten"
 
 
 # ============================================================
