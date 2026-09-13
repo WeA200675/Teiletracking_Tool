@@ -4,69 +4,6 @@ const MASTER_DATA_STORAGE_KEY = "teiletracking.masterData.v2";
 const LEGACY_MASTER_DATA_STORAGE_KEY = "teiletracking.masterData.v1";
 const TRACKING_STORAGE_KEY = "teiletracking.tracking.v1";
 
-const DEFAULT_OCR_CONFIG = {
-    ProfileName: "Standard-Label",
-    Version: 1,
-    Fields: {
-        PartNumber: {
-            Aliases: [
-                "PN",
-                "P/N",
-                "PART NO",
-                "PART NO.",
-                "PART NUMBER",
-                "PARTNUMBER",
-                "PART NR",
-                "PART NR.",
-                "TEILENUMMER",
-                "TEILE NR",
-                "TEILE NR."
-            ],
-            Required: true
-        },
-        SerialNumber: {
-            Aliases: [
-                "SN",
-                "S/N",
-                "SERIAL",
-                "SERIAL NO",
-                "SERIAL NO.",
-                "SERIAL NUMBER",
-                "SERIALNUMBER",
-                "SERIENNUMMER",
-                "SERIEN NR",
-                "SERIEN NR."
-            ],
-            Required: true
-        },
-        Hardware: {
-            Aliases: [
-                "HW",
-                "H/W",
-                "HARDWARE",
-                "HARDWARE VERSION",
-                "HW VERSION"
-            ],
-            Required: false
-        },
-        Software: {
-            Aliases: [
-                "SW",
-                "S/W",
-                "SOFTWARE",
-                "SOFTWARE VERSION",
-                "SW VERSION"
-            ],
-            Required: false
-        }
-    },
-    Parsing: {
-        AllowValueOnNextLine: true,
-        ValuePattern:
-            "[A-Z0-9][A-Z0-9._/\\-]*"
-    }
-};
-
 const state = {
     masterData: null,
     baseMasterData: null,
@@ -74,20 +11,9 @@ const state = {
     initialTrackingData: [],
     savedItems: [],
     currentRecord: null,
-    qrScannerStream: null,
-    qrScannerAnimationFrame: null,
-    qrScannerDetector: null,
-    qrScannerMode: null,
-    qrScannerCanvas: null,
-    qrScannerCanvasContext: null,
     qrScannerRunning: false,
     capturedLabelImageDataUrl: null,
-    labelOcrWorker: null,
-    labelOcrWorkerPromise: null,
     labelOcrBusy: false,
-    ocrConfig: JSON.parse(JSON.stringify(DEFAULT_OCR_CONFIG)),
-    ocrConfigSource: "DEFAULT",
-    labelOcrPassLabel: "",
     labelScanAttempts: 0,
     maxLabelScanAttempts: 5
 };
@@ -660,112 +586,106 @@ function createEmptyLocalMasterData() {
 }
 
 function getLocalMasterData() {
-    try {
-        const stored = localStorage.getItem(MASTER_DATA_STORAGE_KEY);
+    const empty =
+        createEmptyLocalMasterData();
 
-        if (stored) {
-            const parsed = JSON.parse(stored);
+    const parsed =
+        TeiletrackingDataService.readJson(
+            MASTER_DATA_STORAGE_KEY,
+            null
+        );
 
-            return {
-                Derivate: Array.isArray(parsed.Derivate)
+    if (
+        parsed &&
+        typeof parsed === "object"
+    ) {
+        return {
+            Derivate:
+                Array.isArray(parsed.Derivate)
                     ? parsed.Derivate
                     : [],
-
-                IStufen: Array.isArray(parsed.IStufen)
+            IStufen:
+                Array.isArray(parsed.IStufen)
                     ? parsed.IStufen
                     : [],
-
-                AktivOverrides: {
-                    Derivate:
-                        parsed.AktivOverrides?.Derivate &&
-                        typeof parsed.AktivOverrides.Derivate === "object"
-                            ? parsed.AktivOverrides.Derivate
-                            : {},
-
-                    IStufen:
-                        parsed.AktivOverrides?.IStufen &&
-                        typeof parsed.AktivOverrides.IStufen === "object"
-                            ? parsed.AktivOverrides.IStufen
-                            : {}
-                }
-            };
-        }
-
-        const legacyStored = localStorage.getItem(
-            LEGACY_MASTER_DATA_STORAGE_KEY
-        );
-
-        if (!legacyStored) {
-            return createEmptyLocalMasterData();
-        }
-
-        const legacy = JSON.parse(legacyStored);
-
-        const migrated = {
-            Derivate: Array.isArray(legacy.Derivate)
-                ? legacy.Derivate
-                : [],
-
-            IStufen: Array.isArray(legacy.IStufen)
-                ? legacy.IStufen
-                : [],
-
             AktivOverrides: {
-                Derivate: {},
-                IStufen: {}
+                Derivate:
+                    parsed.AktivOverrides?.Derivate &&
+                    typeof parsed.AktivOverrides.Derivate === "object"
+                        ? parsed.AktivOverrides.Derivate
+                        : {},
+                IStufen:
+                    parsed.AktivOverrides?.IStufen &&
+                    typeof parsed.AktivOverrides.IStufen === "object"
+                        ? parsed.AktivOverrides.IStufen
+                        : {}
             }
         };
+    }
 
-        localStorage.setItem(
-            MASTER_DATA_STORAGE_KEY,
-            JSON.stringify(migrated)
+    const legacy =
+        TeiletrackingDataService.readJson(
+            LEGACY_MASTER_DATA_STORAGE_KEY,
+            null
         );
 
-        return migrated;
+    if (
+        !legacy ||
+        typeof legacy !== "object"
+    ) {
+        return empty;
     }
-    catch (error) {
-        console.error(
-            "Lokale Stammdaten konnten nicht gelesen werden:",
-            error
-        );
 
-        return createEmptyLocalMasterData();
-    }
+    const migrated = {
+        Derivate:
+            Array.isArray(legacy.Derivate)
+                ? legacy.Derivate
+                : [],
+        IStufen:
+            Array.isArray(legacy.IStufen)
+                ? legacy.IStufen
+                : [],
+        AktivOverrides: {
+            Derivate: {},
+            IStufen: {}
+        }
+    };
+
+    TeiletrackingDataService.writeJson(
+        MASTER_DATA_STORAGE_KEY,
+        migrated
+    );
+
+    return migrated;
 }
 
 function saveLocalMasterData() {
-    localStorage.setItem(
+    TeiletrackingDataService.writeJson(
         MASTER_DATA_STORAGE_KEY,
-        JSON.stringify(state.localMasterData)
+        state.localMasterData
     );
 }
 
 function getLocalTrackingData() {
-    try {
-        const stored = localStorage.getItem(TRACKING_STORAGE_KEY);
-
-        if (!stored) {
-            return [];
-        }
-
-        const parsed = JSON.parse(stored);
-
-        if (!Array.isArray(parsed)) {
-            return [];
-        }
-
-        return parsed
-            .filter(item => item && typeof item === "object")
-            .map(normalizeStoredTrackingRecord);
-    }
-    catch (error) {
-        console.error(
-            "Lokale Tracking-Daten konnten nicht gelesen werden:",
-            error
+    const parsed =
+        TeiletrackingDataService.readJson(
+            TRACKING_STORAGE_KEY,
+            []
         );
 
+    if (!Array.isArray(parsed)) {
         return [];
     }
+
+    return parsed
+        .filter(
+            item =>
+                item &&
+                typeof item === "object"
+        )
+        .map(
+            normalizeStoredTrackingRecord
+        );
 }
 
 function normalizeStoredTrackingRecord(item) {
@@ -833,22 +753,17 @@ function normalizeStoredTrackingRecord(item) {
 }
 
 function saveLocalTrackingData() {
-    localStorage.setItem(
+    TeiletrackingDataService.writeJson(
         TRACKING_STORAGE_KEY,
-        JSON.stringify(state.savedItems)
+        state.savedItems
     );
 }
 
 function createLocalRecordId() {
-    if (
-        typeof crypto !== "undefined" &&
-        typeof crypto.randomUUID === "function"
-    ) {
-        return crypto.randomUUID();
-    }
-
-    return `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    return TeiletrackingDataService
+        .createLocalRecordId();
 }
+
 
 function getOverrideValue(type, code) {
     const normalizedCode = normalizeText(code);
@@ -1533,134 +1448,12 @@ function setQrScannerStatus(message, type = "") {
     elements.qrScannerStatus.textContent = message;
 }
 
-function getQrScannerErrorMessage(error) {
-    if (!error) {
-        return "Die Kamera konnte nicht gestartet werden.";
-    }
-
-    switch (error.name) {
-        case "NotAllowedError":
-        case "PermissionDeniedError":
-            return "Der Kamerazugriff wurde nicht erlaubt. Bitte erlaube den Kamerazugriff im Browser.";
-
-        case "NotFoundError":
-        case "DevicesNotFoundError":
-            return "Es wurde keine verwendbare Kamera gefunden.";
-
-        case "NotReadableError":
-        case "TrackStartError":
-            return "Die Kamera ist bereits belegt oder konnte nicht gelesen werden.";
-
-        case "OverconstrainedError":
-        case "ConstraintNotSatisfiedError":
-            return "Die gewünschte Kameraeinstellung wird von diesem Gerät nicht unterstützt.";
-
-        case "SecurityError":
-            return "Der Browser blockiert den Kamerazugriff aus Sicherheitsgründen.";
-
-        default:
-            return error.message
-                ? `Kamera-Fehler: ${error.message}`
-                : "Die Kamera konnte nicht gestartet werden.";
-    }
-}
-
-async function createQrScannerEngine() {
-    state.qrScannerDetector = null;
-    state.qrScannerMode = null;
-    state.qrScannerCanvas = null;
-    state.qrScannerCanvasContext = null;
-
-    if ("BarcodeDetector" in window) {
-        try {
-            let supportsQr = true;
-
-            if (
-                typeof BarcodeDetector.getSupportedFormats ===
-                "function"
-            ) {
-                const supportedFormats =
-                    await BarcodeDetector.getSupportedFormats();
-
-                supportsQr =
-                    supportedFormats.includes("qr_code");
-            }
-
-            if (supportsQr) {
-                state.qrScannerDetector =
-                    new BarcodeDetector({
-                        formats: ["qr_code"]
-                    });
-
-                state.qrScannerMode =
-                    "BARCODE_DETECTOR";
-
-                return;
-            }
-        }
-        catch (error) {
-            console.warn(
-                "Native BarcodeDetector-Erkennung ist nicht verfügbar. jsQR-Fallback wird verwendet.",
-                error
-            );
-        }
-    }
-
-    if (typeof window.jsQR === "function") {
-        state.qrScannerCanvas =
-            document.createElement("canvas");
-
-        state.qrScannerCanvasContext =
-            state.qrScannerCanvas.getContext(
-                "2d",
-                {
-                    willReadFrequently: true
-                }
-            );
-
-        if (!state.qrScannerCanvasContext) {
-            throw new Error(
-                "Der QR-Fallback konnte keinen Canvas-Kontext erstellen."
-            );
-        }
-
-        state.qrScannerMode = "JSQR";
-        return;
-    }
-
-    throw new Error(
-        "Die QR-Erkennung ist in diesem Browser nicht verfügbar und der jsQR-Fallback konnte nicht geladen werden. Bitte prüfe die Internetverbindung und lade die Seite neu."
-    );
-}
-
 function stopQrScannerCamera() {
     state.qrScannerRunning = false;
 
-    if (state.qrScannerAnimationFrame) {
-        cancelAnimationFrame(
-            state.qrScannerAnimationFrame
-        );
-
-        state.qrScannerAnimationFrame = null;
-    }
-
-    if (state.qrScannerStream) {
-        for (
-            const track of
-            state.qrScannerStream.getTracks()
-        ) {
-            track.stop();
-        }
-
-        state.qrScannerStream = null;
-    }
-
-    elements.qrScannerVideo.srcObject = null;
-
-    state.qrScannerDetector = null;
-    state.qrScannerMode = null;
-    state.qrScannerCanvas = null;
-    state.qrScannerCanvasContext = null;
+    TeiletrackingScannerService.stopCamera(
+        elements.qrScannerVideo
+    );
 }
 
 function closeQrScanner() {
@@ -1674,127 +1467,6 @@ function closeQrScanner() {
         "scanner-open"
     );
 }
-
-function getScannedQrText(barcode) {
-    if (!barcode) {
-        return "";
-    }
-
-    return String(
-        barcode.rawValue || ""
-    ).trim();
-}
-
-function acceptScannedQrText(rawValue) {
-    const value = String(rawValue || "").trim();
-
-    if (!value) {
-        setQrScannerStatus(
-            "Der QR-Code enthält keinen auswertbaren Text.",
-            "error"
-        );
-
-        return false;
-    }
-
-    try {
-        parseTrackingString(value);
-    }
-    catch (error) {
-        setQrScannerStatus(
-            `QR-Code erkannt, aber das Datenformat passt noch nicht zum aktuellen Parser: ${error.message}`,
-            "error"
-        );
-
-        return false;
-    }
-
-    elements.qrInput.value = value;
-
-    setQrScanResult(
-        "QR-Code erfolgreich per Kamera übernommen.",
-        "success"
-    );
-
-    closeQrScanner();
-
-    if (
-        elements.labelInput.value.trim() &&
-        elements.derivat.value &&
-        elements.iStufe.value
-    ) {
-        checkCurrentInput();
-    }
-
-    return true;
-}
-
-function scanQrWithJsQr(video) {
-    const canvas = state.qrScannerCanvas;
-    const context =
-        state.qrScannerCanvasContext;
-
-    if (
-        !canvas ||
-        !context ||
-        typeof window.jsQR !== "function"
-    ) {
-        return "";
-    }
-
-    const width =
-        video.videoWidth;
-
-    const height =
-        video.videoHeight;
-
-    if (
-        !width ||
-        !height
-    ) {
-        return "";
-    }
-
-    if (
-        canvas.width !== width ||
-        canvas.height !== height
-    ) {
-        canvas.width = width;
-        canvas.height = height;
-    }
-
-    context.drawImage(
-        video,
-        0,
-        0,
-        width,
-        height
-    );
-
-    const imageData =
-        context.getImageData(
-            0,
-            0,
-            width,
-            height
-        );
-
-    const result =
-        window.jsQR(
-            imageData.data,
-            width,
-            height,
-            {
-                inversionAttempts:
-                    "attemptBoth"
-            }
-        );
-
-    return result && result.data
-        ? String(result.data).trim()
-        : "";
-}
-
 
 
 function setLabelOcrProgress(
@@ -1882,7 +1554,7 @@ function clearLabelOcrResult() {
     clearOcrFieldComparison();
 }
 
-function updateLabelOcrWorkerProgress(message) {
+function updateLabelOcrServiceProgress(message) {
     if (!message) {
         return;
     }
@@ -1894,8 +1566,8 @@ function updateLabelOcrWorkerProgress(message) {
         Number(message.progress);
 
     const passPrefix =
-        state.labelOcrPassLabel
-            ? `${state.labelOcrPassLabel} · `
+        message.passLabel
+            ? `${message.passLabel} · `
             : "";
 
     if (
@@ -1910,580 +1582,39 @@ function updateLabelOcrWorkerProgress(message) {
             `${percent} %`,
             "running"
         );
-
-        if (status) {
-            setLabelOcrStatus(
-                `${passPrefix}OCR läuft: ${status} …`
-            );
-        }
-
-        return;
     }
 
     if (status) {
         setLabelOcrStatus(
-            `${passPrefix}OCR wird vorbereitet: ${status} …`
+            `${passPrefix}${status} …`
         );
     }
-}
-
-
-async function getLabelOcrWorker() {
-    if (state.labelOcrWorker) {
-        return state.labelOcrWorker;
-    }
-
-    if (state.labelOcrWorkerPromise) {
-        return state.labelOcrWorkerPromise;
-    }
-
-    if (
-        !window.Tesseract ||
-        typeof window.Tesseract.createWorker !==
-        "function"
-    ) {
-        throw new Error(
-            "Die OCR-Bibliothek Tesseract.js konnte nicht geladen werden. Bitte Internetverbindung prüfen und die Seite neu laden."
-        );
-    }
-
-    state.labelOcrWorkerPromise =
-        window.Tesseract.createWorker(
-            "eng",
-            1,
-            {
-                logger:
-                    updateLabelOcrWorkerProgress
-            }
-        );
-
-    try {
-        state.labelOcrWorker =
-            await state.labelOcrWorkerPromise;
-
-        return state.labelOcrWorker;
-    }
-    finally {
-        state.labelOcrWorkerPromise = null;
-    }
-}
-
-function cloneDefaultOcrConfig() {
-    return JSON.parse(
-        JSON.stringify(
-            DEFAULT_OCR_CONFIG
-        )
-    );
-}
-
-function normalizeOcrAliases(
-    value,
-    fallback
-) {
-    if (!Array.isArray(value)) {
-        return [...fallback];
-    }
-
-    const aliases =
-        value
-            .map(item =>
-                String(item || "").trim()
-            )
-            .filter(Boolean);
-
-    return aliases.length > 0
-        ? aliases
-        : [...fallback];
-}
-
-function normalizeOcrConfig(rawConfig) {
-    const fallback =
-        cloneDefaultOcrConfig();
-
-    if (
-        !rawConfig ||
-        typeof rawConfig !== "object"
-    ) {
-        return fallback;
-    }
-
-    const config =
-        cloneDefaultOcrConfig();
-
-    if (
-        typeof rawConfig.ProfileName ===
-        "string" &&
-        rawConfig.ProfileName.trim()
-    ) {
-        config.ProfileName =
-            rawConfig.ProfileName.trim();
-    }
-
-    if (
-        Number.isFinite(
-            Number(rawConfig.Version)
-        )
-    ) {
-        config.Version =
-            Number(rawConfig.Version);
-    }
-
-    for (
-        const fieldName of [
-            "PartNumber",
-            "SerialNumber",
-            "Hardware",
-            "Software"
-        ]
-    ) {
-        const sourceField =
-            rawConfig.Fields &&
-            rawConfig.Fields[fieldName];
-
-        const fallbackField =
-            fallback.Fields[fieldName];
-
-        if (
-            sourceField &&
-            typeof sourceField === "object"
-        ) {
-            config.Fields[fieldName].Aliases =
-                normalizeOcrAliases(
-                    sourceField.Aliases,
-                    fallbackField.Aliases
-                );
-
-            if (
-                typeof sourceField.Required ===
-                "boolean"
-            ) {
-                config.Fields[fieldName].Required =
-                    sourceField.Required;
-            }
-        }
-    }
-
-    const parsing =
-        rawConfig.Parsing;
-
-    if (
-        parsing &&
-        typeof parsing === "object"
-    ) {
-        if (
-            typeof parsing.AllowValueOnNextLine ===
-            "boolean"
-        ) {
-            config.Parsing.AllowValueOnNextLine =
-                parsing.AllowValueOnNextLine;
-        }
-
-        if (
-            typeof parsing.ValuePattern ===
-            "string" &&
-            parsing.ValuePattern.trim()
-        ) {
-            try {
-                new RegExp(
-                    parsing.ValuePattern,
-                    "i"
-                );
-
-                config.Parsing.ValuePattern =
-                    parsing.ValuePattern;
-            }
-            catch (error) {
-                console.warn(
-                    "Ungültiges OCR-ValuePattern in ocr-config.json. Standardwert wird verwendet.",
-                    error
-                );
-            }
-        }
-    }
-
-    return config;
 }
 
 async function loadOcrConfig() {
-    state.ocrConfig =
-        cloneDefaultOcrConfig();
-
-    state.ocrConfigSource =
-        "DEFAULT";
-
-    try {
-        const response =
-            await fetch(
-                "./ocr-config.json",
-                {
-                    cache: "no-store"
-                }
+    const result =
+        await TeiletrackingOcrService
+            .loadConfig(
+                "./ocr-config.json"
             );
 
-        if (!response.ok) {
-            throw new Error(
-                `HTTP ${response.status}`
-            );
-        }
-
-        const rawConfig =
-            await response.json();
-
-        state.ocrConfig =
-            normalizeOcrConfig(
-                rawConfig
-            );
-
-        state.ocrConfigSource =
-            "FILE";
-
-        console.info(
-            `OCR-Mapping geladen: ${state.ocrConfig.ProfileName} (Version ${state.ocrConfig.Version})`
-        );
-    }
-    catch (error) {
-        console.warn(
-            "ocr-config.json konnte nicht geladen werden. Das eingebaute Standard-Mapping wird verwendet.",
-            error
-        );
-    }
+    console.info(
+        `OCR-Mapping geladen: ${TeiletrackingOcrService.getProfileName()} (${result.source})`
+    );
 }
 
 function getOcrProfileName() {
-    return String(
-        state.ocrConfig &&
-        state.ocrConfig.ProfileName
-            ? state.ocrConfig.ProfileName
-            : "Standard-Label"
-    );
+    return TeiletrackingOcrService
+        .getProfileName();
 }
-
-function getOcrFieldAliases(
-    fieldName
-) {
-    const field =
-        state.ocrConfig &&
-        state.ocrConfig.Fields &&
-        state.ocrConfig.Fields[fieldName];
-
-    if (
-        field &&
-        Array.isArray(field.Aliases) &&
-        field.Aliases.length > 0
-    ) {
-        return field.Aliases;
-    }
-
-    return (
-        DEFAULT_OCR_CONFIG
-            .Fields[fieldName]
-            .Aliases
-    );
-}
-
-function escapeRegex(value) {
-    return String(value || "")
-        .replace(
-            /[.*+?^${}()|[\]\\]/g,
-            "\\$&"
-        );
-}
-
-function createOcrAliasPattern(
-    alias
-) {
-    const normalized =
-        String(alias || "")
-            .trim();
-
-    if (!normalized) {
-        return "";
-    }
-
-    let pattern = "";
-
-    for (const character of normalized) {
-        if (/\s/.test(character)) {
-            pattern += "\\s*";
-            continue;
-        }
-
-        if (character === "/") {
-            pattern += "\\s*/\\s*";
-            continue;
-        }
-
-        pattern +=
-            escapeRegex(character);
-    }
-
-    return pattern.replace(
-        /(?:\\s\*){2,}/g,
-        "\\s*"
-    );
-}
-
-function getOcrValuePattern() {
-    const configuredPattern =
-        state.ocrConfig &&
-        state.ocrConfig.Parsing &&
-        state.ocrConfig.Parsing.ValuePattern;
-
-    if (
-        typeof configuredPattern ===
-        "string" &&
-        configuredPattern.trim()
-    ) {
-        return configuredPattern;
-    }
-
-    return (
-        DEFAULT_OCR_CONFIG
-            .Parsing
-            .ValuePattern
-    );
-}
-
-function normalizeOcrLine(value) {
-    return String(value || "")
-        .replace(/\u00A0/g, " ")
-        .replace(/[|]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-}
-
-function cleanOcrFieldValue(value) {
-    return normalizeText(
-        String(value || "")
-            .replace(/^[=:;,\-\s]+/, "")
-            .replace(/[;,\s]+$/, "")
-    );
-}
-
-function findOcrFieldValue(
-    lines,
-    aliases
-) {
-    const aliasPatterns =
-        aliases
-            .map(createOcrAliasPattern)
-            .filter(Boolean);
-
-    if (aliasPatterns.length === 0) {
-        return "";
-    }
-
-    const aliasPattern =
-        aliasPatterns.join("|");
-
-    const valuePattern =
-        getOcrValuePattern();
-
-    const sameLineRegex =
-        new RegExp(
-            `(?:^|\\s)(?:${aliasPattern})\\s*(?::|=|\\-)?\\s*(${valuePattern})`,
-            "i"
-        );
-
-    const aliasOnlyRegex =
-        new RegExp(
-            `^\\s*(?:${aliasPattern})\\s*(?::|=|\\-)?\\s*$`,
-            "i"
-        );
-
-    const nextLineValueRegex =
-        new RegExp(
-            `^\\s*(${valuePattern})`,
-            "i"
-        );
-
-    for (
-        let index = 0;
-        index < lines.length;
-        index += 1
-    ) {
-        const line =
-            normalizeOcrLine(
-                lines[index]
-            );
-
-        const sameLineMatch =
-            line.match(
-                sameLineRegex
-            );
-
-        if (
-            sameLineMatch &&
-            sameLineMatch[1]
-        ) {
-            return cleanOcrFieldValue(
-                sameLineMatch[1]
-            );
-        }
-
-        const allowNextLine =
-            Boolean(
-                state.ocrConfig &&
-                state.ocrConfig.Parsing &&
-                state.ocrConfig.Parsing
-                    .AllowValueOnNextLine
-            );
-
-        if (
-            allowNextLine &&
-            aliasOnlyRegex.test(line) &&
-            index + 1 < lines.length
-        ) {
-            const nextLine =
-                normalizeOcrLine(
-                    lines[index + 1]
-                );
-
-            const nextLineMatch =
-                nextLine.match(
-                    nextLineValueRegex
-                );
-
-            if (
-                nextLineMatch &&
-                nextLineMatch[1]
-            ) {
-                return cleanOcrFieldValue(
-                    nextLineMatch[1]
-                );
-            }
-        }
-    }
-
-    return "";
-}
-
-
-function extractTrackingDataFromOcrText(
-    rawText
-) {
-    const normalizedRaw =
-        String(rawText || "")
-            .replace(/\r/g, "\n");
-
-    const lines =
-        normalizedRaw
-            .split(/\n+/)
-            .map(normalizeOcrLine)
-            .filter(Boolean);
-
-    const combinedLines = [
-        ...lines,
-        normalizeOcrLine(
-            lines.join(" ")
-        )
-    ];
-
-    const partNumber =
-        findOcrFieldValue(
-            combinedLines,
-            getOcrFieldAliases(
-                "PartNumber"
-            )
-        );
-
-    const serialNumber =
-        findOcrFieldValue(
-            combinedLines,
-            getOcrFieldAliases(
-                "SerialNumber"
-            )
-        );
-
-    const hardware =
-        findOcrFieldValue(
-            combinedLines,
-            getOcrFieldAliases(
-                "Hardware"
-            )
-        );
-
-    const software =
-        findOcrFieldValue(
-            combinedLines,
-            getOcrFieldAliases(
-                "Software"
-            )
-        );
-
-    return {
-        partNumber,
-        serialNumber,
-        hardware,
-        software
-    };
-}
-
 
 function buildTrackingStringFromOcrData(
     data
 ) {
-    const segments = [];
-
-    if (data.partNumber) {
-        segments.push(
-            `PN=${data.partNumber}`
-        );
-    }
-
-    if (data.serialNumber) {
-        segments.push(
-            `SN=${data.serialNumber}`
-        );
-    }
-
-    if (data.hardware) {
-        segments.push(
-            `HW=${data.hardware}`
-        );
-    }
-
-    if (data.software) {
-        segments.push(
-            `SW=${data.software}`
-        );
-    }
-
-    return segments.join(";");
+    return TeiletrackingOcrService
+        .buildTrackingString(data);
 }
 
-function getMissingOcrFieldsForQr(
-    ocrData,
-    qrData
-) {
-    const missing = [];
-
-    if (!ocrData.partNumber) {
-        missing.push("PN");
-    }
-
-    if (!ocrData.serialNumber) {
-        missing.push("SN");
-    }
-
-    if (
-        qrData &&
-        qrData.hardware &&
-        !ocrData.hardware
-    ) {
-        missing.push("HW");
-    }
-
-    if (
-        qrData &&
-        qrData.software &&
-        !ocrData.software
-    ) {
-        missing.push("SW");
-    }
-
-    return missing;
-}
 
 function getEditableOcrData() {
     return {
@@ -2753,403 +1884,6 @@ function applyOcrValuesAndCompare() {
     );
 }
 
-function prepareLabelOcrCanvas(
-    sourceCanvas
-) {
-    const targetWidth =
-        Math.min(
-            2200,
-            Math.max(
-                sourceCanvas.width,
-                Math.round(
-                    sourceCanvas.width * 1.5
-                )
-            )
-        );
-
-    const scale =
-        targetWidth /
-        sourceCanvas.width;
-
-    const targetHeight =
-        Math.round(
-            sourceCanvas.height *
-            scale
-        );
-
-    const canvas =
-        document.createElement("canvas");
-
-    canvas.width = targetWidth;
-    canvas.height = targetHeight;
-
-    const context =
-        canvas.getContext(
-            "2d",
-            {
-                willReadFrequently: true
-            }
-        );
-
-    if (!context) {
-        throw new Error(
-            "Das Labelbild konnte nicht für OCR vorbereitet werden."
-        );
-    }
-
-    context.drawImage(
-        sourceCanvas,
-        0,
-        0,
-        targetWidth,
-        targetHeight
-    );
-
-    return canvas;
-}
-
-function cloneOcrCanvas(
-    sourceCanvas
-) {
-    const canvas =
-        document.createElement("canvas");
-
-    canvas.width =
-        sourceCanvas.width;
-
-    canvas.height =
-        sourceCanvas.height;
-
-    const context =
-        canvas.getContext(
-            "2d",
-            {
-                willReadFrequently: true
-            }
-        );
-
-    if (!context) {
-        throw new Error(
-            "OCR-Bildvariante konnte nicht erstellt werden."
-        );
-    }
-
-    context.drawImage(
-        sourceCanvas,
-        0,
-        0
-    );
-
-    return {
-        canvas,
-        context
-    };
-}
-
-function createGrayscaleContrastOcrCanvas(
-    sourceCanvas
-) {
-    const { canvas, context } =
-        cloneOcrCanvas(
-            sourceCanvas
-        );
-
-    const imageData =
-        context.getImageData(
-            0,
-            0,
-            canvas.width,
-            canvas.height
-        );
-
-    const data =
-        imageData.data;
-
-    const contrast = 1.45;
-
-    for (
-        let index = 0;
-        index < data.length;
-        index += 4
-    ) {
-        const luminance =
-            (
-                data[index] * 0.299 +
-                data[index + 1] * 0.587 +
-                data[index + 2] * 0.114
-            );
-
-        const adjusted =
-            Math.max(
-                0,
-                Math.min(
-                    255,
-                    (
-                        luminance - 128
-                    ) *
-                    contrast +
-                    128
-                )
-            );
-
-        data[index] = adjusted;
-        data[index + 1] = adjusted;
-        data[index + 2] = adjusted;
-    }
-
-    context.putImageData(
-        imageData,
-        0,
-        0
-    );
-
-    return canvas;
-}
-
-function getAutomaticThreshold(
-    imageData
-) {
-    const histogram =
-        new Array(256).fill(0);
-
-    const data =
-        imageData.data;
-
-    for (
-        let index = 0;
-        index < data.length;
-        index += 4
-    ) {
-        const luminance =
-            Math.round(
-                data[index] * 0.299 +
-                data[index + 1] * 0.587 +
-                data[index + 2] * 0.114
-            );
-
-        histogram[luminance] += 1;
-    }
-
-    const totalPixels =
-        imageData.width *
-        imageData.height;
-
-    let weightedSum = 0;
-
-    for (
-        let value = 0;
-        value < 256;
-        value += 1
-    ) {
-        weightedSum +=
-            value *
-            histogram[value];
-    }
-
-    let backgroundWeight = 0;
-    let backgroundSum = 0;
-    let maximumVariance = -1;
-    let threshold = 160;
-
-    for (
-        let value = 0;
-        value < 256;
-        value += 1
-    ) {
-        backgroundWeight +=
-            histogram[value];
-
-        if (backgroundWeight === 0) {
-            continue;
-        }
-
-        const foregroundWeight =
-            totalPixels -
-            backgroundWeight;
-
-        if (foregroundWeight === 0) {
-            break;
-        }
-
-        backgroundSum +=
-            value *
-            histogram[value];
-
-        const backgroundMean =
-            backgroundSum /
-            backgroundWeight;
-
-        const foregroundMean =
-            (
-                weightedSum -
-                backgroundSum
-            ) /
-            foregroundWeight;
-
-        const variance =
-            backgroundWeight *
-            foregroundWeight *
-            Math.pow(
-                backgroundMean -
-                foregroundMean,
-                2
-            );
-
-        if (
-            variance >
-            maximumVariance
-        ) {
-            maximumVariance =
-                variance;
-
-            threshold =
-                value;
-        }
-    }
-
-    return threshold;
-}
-
-function createThresholdOcrCanvas(
-    sourceCanvas
-) {
-    const { canvas, context } =
-        cloneOcrCanvas(
-            sourceCanvas
-        );
-
-    const imageData =
-        context.getImageData(
-            0,
-            0,
-            canvas.width,
-            canvas.height
-        );
-
-    const threshold =
-        getAutomaticThreshold(
-            imageData
-        );
-
-    const data =
-        imageData.data;
-
-    for (
-        let index = 0;
-        index < data.length;
-        index += 4
-    ) {
-        const luminance =
-            (
-                data[index] * 0.299 +
-                data[index + 1] * 0.587 +
-                data[index + 2] * 0.114
-            );
-
-        const value =
-            luminance >= threshold
-                ? 255
-                : 0;
-
-        data[index] = value;
-        data[index + 1] = value;
-        data[index + 2] = value;
-    }
-
-    context.putImageData(
-        imageData,
-        0,
-        0
-    );
-
-    return canvas;
-}
-
-function createOcrImageVariants(
-    sourceCanvas
-) {
-    const baseCanvas =
-        prepareLabelOcrCanvas(
-            sourceCanvas
-        );
-
-    return [
-        {
-            name: "Original",
-            canvas: baseCanvas
-        },
-        {
-            name: "Graustufe + Kontrast",
-            canvas:
-                createGrayscaleContrastOcrCanvas(
-                    baseCanvas
-                )
-        },
-        {
-            name: "Schwarz/Weiß",
-            canvas:
-                createThresholdOcrCanvas(
-                    baseCanvas
-                )
-        }
-    ];
-}
-
-function getOcrCandidateScore(
-    ocrData,
-    confidence
-) {
-    let score = 0;
-
-    if (ocrData.partNumber) {
-        score += 100;
-    }
-
-    if (ocrData.serialNumber) {
-        score += 100;
-    }
-
-    if (ocrData.hardware) {
-        score += 30;
-    }
-
-    if (ocrData.software) {
-        score += 30;
-    }
-
-    const normalizedConfidence =
-        Number.isFinite(
-            Number(confidence)
-        )
-            ? Math.max(
-                0,
-                Math.min(
-                    100,
-                    Number(confidence)
-                )
-            )
-            : 0;
-
-    score +=
-        normalizedConfidence /
-        10;
-
-    return score;
-}
-
-function isOcrCandidateComplete(
-    ocrData,
-    qrData
-) {
-    return (
-        getMissingOcrFieldsForQr(
-            ocrData,
-            qrData
-        ).length === 0
-    );
-}
-
-
 async function recognizeVisibleLabelText(
     sourceCanvas,
     qrText
@@ -3168,12 +1902,8 @@ async function recognizeVisibleLabelText(
     );
 
     state.labelOcrBusy = true;
-    state.labelOcrPassLabel = "";
 
     try {
-        const worker =
-            await getLabelOcrWorker();
-
         let qrData = null;
 
         try {
@@ -3188,114 +1918,23 @@ async function recognizeVisibleLabelText(
             qrData = null;
         }
 
-        const variants =
-            createOcrImageVariants(
-                sourceCanvas
-            );
-
-        let bestCandidate = null;
-
-        for (
-            let index = 0;
-            index < variants.length;
-            index += 1
-        ) {
-            const variant =
-                variants[index];
-
-            state.labelOcrPassLabel =
-                `Variante ${index + 1}/${variants.length}: ${variant.name}`;
-
-            setLabelOcrProgress(
-                `${index + 1}/${variants.length}`,
-                "running"
-            );
-
-            setLabelOcrStatus(
-                `${state.labelOcrPassLabel} wird ausgewertet …`
-            );
-
-            const result =
-                await worker.recognize(
-                    variant.canvas,
+        const bestCandidate =
+            await TeiletrackingOcrService
+                .recognizeBest(
+                    sourceCanvas,
+                    qrData,
                     {
-                        rotateAuto: true
+                        onProgress:
+                            updateLabelOcrServiceProgress
                     }
                 );
-
-            const rawText =
-                result &&
-                result.data &&
-                result.data.text
-                    ? result.data.text
-                    : "";
-
-            const confidence =
-                result &&
-                result.data &&
-                Number.isFinite(
-                    Number(
-                        result.data.confidence
-                    )
-                )
-                    ? Number(
-                        result.data.confidence
-                    )
-                    : 0;
-
-            const ocrData =
-                extractTrackingDataFromOcrText(
-                    rawText
-                );
-
-            const candidate = {
-                variantName:
-                    variant.name,
-                rawText,
-                confidence,
-                ocrData,
-                score:
-                    getOcrCandidateScore(
-                        ocrData,
-                        confidence
-                    )
-            };
-
-            if (
-                !bestCandidate ||
-                candidate.score >
-                bestCandidate.score
-            ) {
-                bestCandidate =
-                    candidate;
-            }
-
-            if (
-                isOcrCandidateComplete(
-                    ocrData,
-                    qrData
-                )
-            ) {
-                bestCandidate =
-                    candidate;
-
-                break;
-            }
-        }
-
-        state.labelOcrPassLabel = "";
-
-        if (!bestCandidate) {
-            throw new Error(
-                "Die sichtbare Label-Beschriftung konnte nicht ausgewertet werden."
-            );
-        }
 
         const {
             ocrData,
             rawText,
             variantName,
-            confidence
+            confidence,
+            missingFields
         } = bestCandidate;
 
         renderLabelOcrResult(
@@ -3313,12 +1952,6 @@ async function recognizeVisibleLabelText(
                 labelTrackingString;
         }
 
-        const missingFields =
-            getMissingOcrFieldsForQr(
-                ocrData,
-                qrData
-            );
-
         const confidenceText =
             Number.isFinite(
                 Number(confidence)
@@ -3326,7 +1959,7 @@ async function recognizeVisibleLabelText(
                 ? `${Math.round(confidence)} %`
                 : "–";
 
-        if (missingFields.length > 0) {
+        if (!bestCandidate.complete) {
             setLabelOcrProgress(
                 "Unvollständig",
                 "error"
@@ -3337,13 +1970,7 @@ async function recognizeVisibleLabelText(
                 "warning"
             );
 
-            return {
-                ocrData,
-                complete: false,
-                variantName,
-                confidence,
-                missingFields
-            };
+            return bestCandidate;
         }
 
         setLabelOcrProgress(
@@ -3356,17 +1983,9 @@ async function recognizeVisibleLabelText(
             "success"
         );
 
-        return {
-            ocrData,
-            complete: true,
-            variantName,
-            confidence,
-            missingFields: []
-        };
+        return bestCandidate;
     }
     catch (error) {
-        state.labelOcrPassLabel = "";
-
         setLabelOcrProgress(
             "Fehler",
             "error"
@@ -3382,26 +2001,14 @@ async function recognizeVisibleLabelText(
     }
     finally {
         state.labelOcrBusy = false;
-        state.labelOcrPassLabel = "";
     }
 }
-
 
 async function terminateLabelOcrWorker() {
-    if (state.labelOcrWorker) {
-        const worker =
-            state.labelOcrWorker;
-
-        state.labelOcrWorker = null;
-
-        try {
-            await worker.terminate();
-        }
-        catch {
-            // Beim Verlassen der Seite ist keine weitere Aktion nötig.
-        }
-    }
+    await TeiletrackingOcrService
+        .terminate();
 }
+
 
 function showCapturedLabelPreview(dataUrl, infoText) {
     state.capturedLabelImageDataUrl = dataUrl;
@@ -3419,81 +2026,23 @@ function removeCapturedLabel() {
 }
 
 function createCapturedLabelCanvas() {
-    const video = elements.qrScannerVideo;
-
-    if (
-        video.readyState <
-        HTMLMediaElement.HAVE_CURRENT_DATA ||
-        !video.videoWidth ||
-        !video.videoHeight
-    ) {
-        throw new Error(
-            "Das Kamerabild ist noch nicht bereit. Bitte kurz warten und erneut auslösen."
+    return TeiletrackingScannerService
+        .captureFrame(
+            elements.qrScannerVideo
         );
-    }
-
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-
-    const context = canvas.getContext(
-        "2d",
-        { willReadFrequently: true }
-    );
-
-    if (!context) {
-        throw new Error(
-            "Die Label-Aufnahme konnte nicht verarbeitet werden."
-        );
-    }
-
-    context.drawImage(
-        video,
-        0,
-        0,
-        canvas.width,
-        canvas.height
-    );
-
-    return { canvas, context };
 }
 
-async function detectQrFromCapturedCanvas(canvas, context) {
-    if (
-        state.qrScannerMode ===
-        "BARCODE_DETECTOR" &&
-        state.qrScannerDetector
-    ) {
-        const barcodes =
-            await state.qrScannerDetector.detect(canvas);
-
-        if (barcodes.length > 0) {
-            return getScannedQrText(barcodes[0]);
-        }
-    }
-
-    if (typeof window.jsQR === "function") {
-        const imageData = context.getImageData(
-            0,
-            0,
-            canvas.width,
-            canvas.height
+async function detectQrFromCapturedCanvas(
+    canvas,
+    context
+) {
+    return TeiletrackingScannerService
+        .detectQr(
+            canvas,
+            context
         );
-
-        const result = window.jsQR(
-            imageData.data,
-            canvas.width,
-            canvas.height,
-            { inversionAttempts: "attemptBoth" }
-        );
-
-        if (result && result.data) {
-            return String(result.data).trim();
-        }
-    }
-
-    return "";
 }
+
 
 async function captureLabelPhoto() {
     if (state.labelOcrBusy) {
@@ -3675,13 +2224,6 @@ async function captureLabelPhoto() {
 }
 
 
-async function scanQrVideoFrame() {
-    // Absichtlich keine automatische Übernahme mehr.
-    // Der QR-Code wird erst beim Auslösen aus derselben Aufnahme gelesen,
-    // die später auch für die OCR der sichtbaren Label-Beschriftung verwendet wird.
-    return;
-}
-
 async function startQrScannerCamera() {
     stopQrScannerCamera();
 
@@ -3689,76 +2231,30 @@ async function startQrScannerCamera() {
         "Kamera wird vorbereitet …"
     );
 
-    if (
-        !window.isSecureContext &&
-        location.hostname !== "localhost" &&
-        location.hostname !== "127.0.0.1"
-    ) {
-        setQrScannerStatus(
-            "Der Kamerazugriff benötigt HTTPS oder localhost.",
-            "error"
-        );
-
-        return;
-    }
-
-    if (
-        !navigator.mediaDevices ||
-        !navigator.mediaDevices.getUserMedia
-    ) {
-        setQrScannerStatus(
-            "Dieser Browser stellt keinen Kamerazugriff über getUserMedia bereit.",
-            "error"
-        );
-
-        return;
-    }
-
     try {
-        await createQrScannerEngine();
-
-        state.qrScannerStream =
-            await navigator.mediaDevices.getUserMedia({
-                audio: false,
-                video: {
-                    facingMode: {
-                        ideal: "environment"
-                    },
-                    width: {
-                        ideal: 1280
-                    },
-                    height: {
-                        ideal: 720
-                    }
-                }
-            });
-
-        elements.qrScannerVideo.srcObject =
-            state.qrScannerStream;
-
-        await elements.qrScannerVideo.play();
+        const scanner =
+            await TeiletrackingScannerService
+                .startCamera(
+                    elements.qrScannerVideo
+                );
 
         state.qrScannerRunning = true;
 
-        const scannerName =
-            state.qrScannerMode ===
-            "BARCODE_DETECTOR"
-                ? "native Browser-Erkennung"
-                : "jsQR-Fallback";
-
         setQrScannerStatus(
-            `Kamera aktiv (${scannerName}). Richte das komplette Label aus und drücke dann „Label aufnehmen“.`
+            `Kamera aktiv (${scanner.displayName}). Richte das komplette Label aus und drücke dann „Label aufnehmen“.`
         );
     }
     catch (error) {
         stopQrScannerCamera();
 
         setQrScannerStatus(
-            getQrScannerErrorMessage(error),
+            TeiletrackingScannerService
+                .getErrorMessage(error),
             "error"
         );
     }
 }
+
 
 async function openQrScanner() {
     setQrScanResult("");
@@ -3840,24 +2336,19 @@ function getTimestampForFileName() {
     return parts.join("");
 }
 
-function downloadTextFile(fileName, content, mimeType) {
-    const blob = new Blob(
-        [content],
-        { type: mimeType }
-    );
-
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = fileName;
-
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    URL.revokeObjectURL(url);
+function downloadTextFile(
+    fileName,
+    content,
+    mimeType
+) {
+    TeiletrackingDataService
+        .downloadTextFile(
+            fileName,
+            content,
+            mimeType
+        );
 }
+
 
 function exportTrackingJson() {
     clearTrackingTransferMessage();

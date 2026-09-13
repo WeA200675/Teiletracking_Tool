@@ -1,0 +1,1153 @@
+"use strict";
+
+(function initializeOcrService(global) {
+    const DEFAULT_CONFIG = {
+        ProfileName: "Standard-Label",
+        Version: 1,
+        Fields: {
+            PartNumber: {
+                Aliases: [
+                    "PN",
+                    "P/N",
+                    "PART NO",
+                    "PART NO.",
+                    "PART NUMBER",
+                    "PARTNUMBER",
+                    "PART NR",
+                    "PART NR.",
+                    "TEILENUMMER",
+                    "TEILE NR",
+                    "TEILE NR."
+                ],
+                Required: true
+            },
+            SerialNumber: {
+                Aliases: [
+                    "SN",
+                    "S/N",
+                    "SERIAL",
+                    "SERIAL NO",
+                    "SERIAL NO.",
+                    "SERIAL NUMBER",
+                    "SERIALNUMBER",
+                    "SERIENNUMMER",
+                    "SERIEN NR",
+                    "SERIEN NR."
+                ],
+                Required: true
+            },
+            Hardware: {
+                Aliases: [
+                    "HW",
+                    "H/W",
+                    "HARDWARE",
+                    "HARDWARE VERSION",
+                    "HW VERSION"
+                ],
+                Required: false
+            },
+            Software: {
+                Aliases: [
+                    "SW",
+                    "S/W",
+                    "SOFTWARE",
+                    "SOFTWARE VERSION",
+                    "SW VERSION"
+                ],
+                Required: false
+            }
+        },
+        Parsing: {
+            AllowValueOnNextLine: true,
+            ValuePattern:
+                "[A-Z0-9][A-Z0-9._/\\-]*"
+        }
+    };
+
+    let config = cloneDefaultConfig();
+    let configSource = "DEFAULT";
+    let worker = null;
+    let workerPromise = null;
+    let progressCallback = null;
+    let passLabel = "";
+
+    function cloneDefaultConfig() {
+        return JSON.parse(
+            JSON.stringify(
+                DEFAULT_CONFIG
+            )
+        );
+    }
+
+    function normalizeText(value) {
+        return String(value || "")
+            .trim()
+            .toUpperCase();
+    }
+
+    function normalizeAliases(
+        value,
+        fallback
+    ) {
+        if (!Array.isArray(value)) {
+            return [...fallback];
+        }
+
+        const aliases =
+            value
+                .map(item =>
+                    String(item || "").trim()
+                )
+                .filter(Boolean);
+
+        return aliases.length > 0
+            ? aliases
+            : [...fallback];
+    }
+
+    function normalizeConfig(rawConfig) {
+        const fallback =
+            cloneDefaultConfig();
+
+        if (
+            !rawConfig ||
+            typeof rawConfig !== "object"
+        ) {
+            return fallback;
+        }
+
+        const normalized =
+            cloneDefaultConfig();
+
+        if (
+            typeof rawConfig.ProfileName ===
+            "string" &&
+            rawConfig.ProfileName.trim()
+        ) {
+            normalized.ProfileName =
+                rawConfig.ProfileName.trim();
+        }
+
+        if (
+            Number.isFinite(
+                Number(rawConfig.Version)
+            )
+        ) {
+            normalized.Version =
+                Number(rawConfig.Version);
+        }
+
+        for (
+            const fieldName of [
+                "PartNumber",
+                "SerialNumber",
+                "Hardware",
+                "Software"
+            ]
+        ) {
+            const sourceField =
+                rawConfig.Fields &&
+                rawConfig.Fields[fieldName];
+
+            const fallbackField =
+                fallback.Fields[fieldName];
+
+            if (
+                sourceField &&
+                typeof sourceField === "object"
+            ) {
+                normalized.Fields[fieldName].Aliases =
+                    normalizeAliases(
+                        sourceField.Aliases,
+                        fallbackField.Aliases
+                    );
+
+                if (
+                    typeof sourceField.Required ===
+                    "boolean"
+                ) {
+                    normalized.Fields[fieldName].Required =
+                        sourceField.Required;
+                }
+            }
+        }
+
+        const parsing =
+            rawConfig.Parsing;
+
+        if (
+            parsing &&
+            typeof parsing === "object"
+        ) {
+            if (
+                typeof parsing.AllowValueOnNextLine ===
+                "boolean"
+            ) {
+                normalized.Parsing.AllowValueOnNextLine =
+                    parsing.AllowValueOnNextLine;
+            }
+
+            if (
+                typeof parsing.ValuePattern ===
+                "string" &&
+                parsing.ValuePattern.trim()
+            ) {
+                try {
+                    new RegExp(
+                        parsing.ValuePattern,
+                        "i"
+                    );
+
+                    normalized.Parsing.ValuePattern =
+                        parsing.ValuePattern;
+                }
+                catch (error) {
+                    console.warn(
+                        "Ungültiges OCR-ValuePattern in ocr-config.json. Standardwert wird verwendet.",
+                        error
+                    );
+                }
+            }
+        }
+
+        return normalized;
+    }
+
+    async function loadConfig(
+        url = "./ocr-config.json"
+    ) {
+        config = cloneDefaultConfig();
+        configSource = "DEFAULT";
+
+        try {
+            const response =
+                await fetch(
+                    url,
+                    { cache: "no-store" }
+                );
+
+            if (!response.ok) {
+                throw new Error(
+                    `HTTP ${response.status}`
+                );
+            }
+
+            config =
+                normalizeConfig(
+                    await response.json()
+                );
+
+            configSource = "FILE";
+        }
+        catch (error) {
+            console.warn(
+                "ocr-config.json konnte nicht geladen werden. Das eingebaute Standard-Mapping wird verwendet.",
+                error
+            );
+        }
+
+        return {
+            config:
+                JSON.parse(
+                    JSON.stringify(config)
+                ),
+            source: configSource
+        };
+    }
+
+    function getProfileName() {
+        return String(
+            config &&
+            config.ProfileName
+                ? config.ProfileName
+                : "Standard-Label"
+        );
+    }
+
+    function getFieldAliases(fieldName) {
+        const field =
+            config &&
+            config.Fields &&
+            config.Fields[fieldName];
+
+        if (
+            field &&
+            Array.isArray(field.Aliases) &&
+            field.Aliases.length > 0
+        ) {
+            return field.Aliases;
+        }
+
+        return (
+            DEFAULT_CONFIG
+                .Fields[fieldName]
+                .Aliases
+        );
+    }
+
+    function escapeRegex(value) {
+        return String(value || "")
+            .replace(
+                /[.*+?^${}()|[\]\\]/g,
+                "\\$&"
+            );
+    }
+
+    function createAliasPattern(alias) {
+        const normalized =
+            String(alias || "")
+                .trim();
+
+        if (!normalized) {
+            return "";
+        }
+
+        let pattern = "";
+
+        for (const character of normalized) {
+            if (/\s/.test(character)) {
+                pattern += "\\s*";
+                continue;
+            }
+
+            if (character === "/") {
+                pattern += "\\s*/\\s*";
+                continue;
+            }
+
+            pattern +=
+                escapeRegex(character);
+        }
+
+        return pattern.replace(
+            /(?:\\s\*){2,}/g,
+            "\\s*"
+        );
+    }
+
+    function getValuePattern() {
+        const configuredPattern =
+            config &&
+            config.Parsing &&
+            config.Parsing.ValuePattern;
+
+        if (
+            typeof configuredPattern ===
+            "string" &&
+            configuredPattern.trim()
+        ) {
+            return configuredPattern;
+        }
+
+        return (
+            DEFAULT_CONFIG
+                .Parsing
+                .ValuePattern
+        );
+    }
+
+    function normalizeOcrLine(value) {
+        return String(value || "")
+            .replace(/\u00A0/g, " ")
+            .replace(/[|]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    function cleanFieldValue(value) {
+        return normalizeText(
+            String(value || "")
+                .replace(/^[=:;,\-\s]+/, "")
+                .replace(/[;,\s]+$/, "")
+        );
+    }
+
+    function findFieldValue(
+        lines,
+        aliases
+    ) {
+        const aliasPatterns =
+            aliases
+                .map(createAliasPattern)
+                .filter(Boolean);
+
+        if (aliasPatterns.length === 0) {
+            return "";
+        }
+
+        const aliasPattern =
+            aliasPatterns.join("|");
+
+        const valuePattern =
+            getValuePattern();
+
+        const sameLineRegex =
+            new RegExp(
+                `(?:^|\\s)(?:${aliasPattern})\\s*(?::|=|\\-)?\\s*(${valuePattern})`,
+                "i"
+            );
+
+        const aliasOnlyRegex =
+            new RegExp(
+                `^\\s*(?:${aliasPattern})\\s*(?::|=|\\-)?\\s*$`,
+                "i"
+            );
+
+        const nextLineValueRegex =
+            new RegExp(
+                `^\\s*(${valuePattern})`,
+                "i"
+            );
+
+        for (
+            let index = 0;
+            index < lines.length;
+            index += 1
+        ) {
+            const line =
+                normalizeOcrLine(
+                    lines[index]
+                );
+
+            const sameLineMatch =
+                line.match(
+                    sameLineRegex
+                );
+
+            if (
+                sameLineMatch &&
+                sameLineMatch[1]
+            ) {
+                return cleanFieldValue(
+                    sameLineMatch[1]
+                );
+            }
+
+            const allowNextLine =
+                Boolean(
+                    config &&
+                    config.Parsing &&
+                    config.Parsing
+                        .AllowValueOnNextLine
+                );
+
+            if (
+                allowNextLine &&
+                aliasOnlyRegex.test(line) &&
+                index + 1 < lines.length
+            ) {
+                const nextLine =
+                    normalizeOcrLine(
+                        lines[index + 1]
+                    );
+
+                const nextLineMatch =
+                    nextLine.match(
+                        nextLineValueRegex
+                    );
+
+                if (
+                    nextLineMatch &&
+                    nextLineMatch[1]
+                ) {
+                    return cleanFieldValue(
+                        nextLineMatch[1]
+                    );
+                }
+            }
+        }
+
+        return "";
+    }
+
+    function extractTrackingData(rawText) {
+        const normalizedRaw =
+            String(rawText || "")
+                .replace(/\r/g, "\n");
+
+        const lines =
+            normalizedRaw
+                .split(/\n+/)
+                .map(normalizeOcrLine)
+                .filter(Boolean);
+
+        const combinedLines = [
+            ...lines,
+            normalizeOcrLine(
+                lines.join(" ")
+            )
+        ];
+
+        return {
+            partNumber:
+                findFieldValue(
+                    combinedLines,
+                    getFieldAliases(
+                        "PartNumber"
+                    )
+                ),
+            serialNumber:
+                findFieldValue(
+                    combinedLines,
+                    getFieldAliases(
+                        "SerialNumber"
+                    )
+                ),
+            hardware:
+                findFieldValue(
+                    combinedLines,
+                    getFieldAliases(
+                        "Hardware"
+                    )
+                ),
+            software:
+                findFieldValue(
+                    combinedLines,
+                    getFieldAliases(
+                        "Software"
+                    )
+                )
+        };
+    }
+
+    function buildTrackingString(data) {
+        const segments = [];
+
+        if (data.partNumber) {
+            segments.push(
+                `PN=${normalizeText(data.partNumber)}`
+            );
+        }
+
+        if (data.serialNumber) {
+            segments.push(
+                `SN=${normalizeText(data.serialNumber)}`
+            );
+        }
+
+        if (data.hardware) {
+            segments.push(
+                `HW=${normalizeText(data.hardware)}`
+            );
+        }
+
+        if (data.software) {
+            segments.push(
+                `SW=${normalizeText(data.software)}`
+            );
+        }
+
+        return segments.join(";");
+    }
+
+    function getMissingFieldsForQr(
+        ocrData,
+        qrData
+    ) {
+        const missing = [];
+
+        if (!ocrData.partNumber) {
+            missing.push("PN");
+        }
+
+        if (!ocrData.serialNumber) {
+            missing.push("SN");
+        }
+
+        if (
+            qrData &&
+            qrData.hardware &&
+            !ocrData.hardware
+        ) {
+            missing.push("HW");
+        }
+
+        if (
+            qrData &&
+            qrData.software &&
+            !ocrData.software
+        ) {
+            missing.push("SW");
+        }
+
+        return missing;
+    }
+
+    function prepareBaseCanvas(sourceCanvas) {
+        const targetWidth =
+            Math.min(
+                2200,
+                Math.max(
+                    sourceCanvas.width,
+                    Math.round(
+                        sourceCanvas.width * 1.5
+                    )
+                )
+            );
+
+        const scale =
+            targetWidth /
+            sourceCanvas.width;
+
+        const targetHeight =
+            Math.round(
+                sourceCanvas.height *
+                scale
+            );
+
+        const canvas =
+            document.createElement("canvas");
+
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+
+        const context =
+            canvas.getContext(
+                "2d",
+                { willReadFrequently: true }
+            );
+
+        if (!context) {
+            throw new Error(
+                "Das Labelbild konnte nicht für OCR vorbereitet werden."
+            );
+        }
+
+        context.drawImage(
+            sourceCanvas,
+            0,
+            0,
+            targetWidth,
+            targetHeight
+        );
+
+        return canvas;
+    }
+
+    function cloneCanvas(sourceCanvas) {
+        const canvas =
+            document.createElement("canvas");
+
+        canvas.width =
+            sourceCanvas.width;
+
+        canvas.height =
+            sourceCanvas.height;
+
+        const context =
+            canvas.getContext(
+                "2d",
+                { willReadFrequently: true }
+            );
+
+        if (!context) {
+            throw new Error(
+                "OCR-Bildvariante konnte nicht erstellt werden."
+            );
+        }
+
+        context.drawImage(
+            sourceCanvas,
+            0,
+            0
+        );
+
+        return {
+            canvas,
+            context
+        };
+    }
+
+    function createGrayscaleContrastCanvas(
+        sourceCanvas
+    ) {
+        const { canvas, context } =
+            cloneCanvas(
+                sourceCanvas
+            );
+
+        const imageData =
+            context.getImageData(
+                0,
+                0,
+                canvas.width,
+                canvas.height
+            );
+
+        const data =
+            imageData.data;
+
+        const contrast = 1.45;
+
+        for (
+            let index = 0;
+            index < data.length;
+            index += 4
+        ) {
+            const luminance =
+                (
+                    data[index] * 0.299 +
+                    data[index + 1] * 0.587 +
+                    data[index + 2] * 0.114
+                );
+
+            const adjusted =
+                Math.max(
+                    0,
+                    Math.min(
+                        255,
+                        (
+                            luminance - 128
+                        ) *
+                        contrast +
+                        128
+                    )
+                );
+
+            data[index] = adjusted;
+            data[index + 1] = adjusted;
+            data[index + 2] = adjusted;
+        }
+
+        context.putImageData(
+            imageData,
+            0,
+            0
+        );
+
+        return canvas;
+    }
+
+    function getAutomaticThreshold(imageData) {
+        const histogram =
+            new Array(256).fill(0);
+
+        const data =
+            imageData.data;
+
+        for (
+            let index = 0;
+            index < data.length;
+            index += 4
+        ) {
+            const luminance =
+                Math.round(
+                    data[index] * 0.299 +
+                    data[index + 1] * 0.587 +
+                    data[index + 2] * 0.114
+                );
+
+            histogram[luminance] += 1;
+        }
+
+        const totalPixels =
+            imageData.width *
+            imageData.height;
+
+        let weightedSum = 0;
+
+        for (
+            let value = 0;
+            value < 256;
+            value += 1
+        ) {
+            weightedSum +=
+                value *
+                histogram[value];
+        }
+
+        let backgroundWeight = 0;
+        let backgroundSum = 0;
+        let maximumVariance = -1;
+        let threshold = 160;
+
+        for (
+            let value = 0;
+            value < 256;
+            value += 1
+        ) {
+            backgroundWeight +=
+                histogram[value];
+
+            if (backgroundWeight === 0) {
+                continue;
+            }
+
+            const foregroundWeight =
+                totalPixels -
+                backgroundWeight;
+
+            if (foregroundWeight === 0) {
+                break;
+            }
+
+            backgroundSum +=
+                value *
+                histogram[value];
+
+            const backgroundMean =
+                backgroundSum /
+                backgroundWeight;
+
+            const foregroundMean =
+                (
+                    weightedSum -
+                    backgroundSum
+                ) /
+                foregroundWeight;
+
+            const variance =
+                backgroundWeight *
+                foregroundWeight *
+                Math.pow(
+                    backgroundMean -
+                    foregroundMean,
+                    2
+                );
+
+            if (
+                variance >
+                maximumVariance
+            ) {
+                maximumVariance =
+                    variance;
+
+                threshold = value;
+            }
+        }
+
+        return threshold;
+    }
+
+    function createThresholdCanvas(
+        sourceCanvas
+    ) {
+        const { canvas, context } =
+            cloneCanvas(
+                sourceCanvas
+            );
+
+        const imageData =
+            context.getImageData(
+                0,
+                0,
+                canvas.width,
+                canvas.height
+            );
+
+        const threshold =
+            getAutomaticThreshold(
+                imageData
+            );
+
+        const data =
+            imageData.data;
+
+        for (
+            let index = 0;
+            index < data.length;
+            index += 4
+        ) {
+            const luminance =
+                (
+                    data[index] * 0.299 +
+                    data[index + 1] * 0.587 +
+                    data[index + 2] * 0.114
+                );
+
+            const value =
+                luminance >= threshold
+                    ? 255
+                    : 0;
+
+            data[index] = value;
+            data[index + 1] = value;
+            data[index + 2] = value;
+        }
+
+        context.putImageData(
+            imageData,
+            0,
+            0
+        );
+
+        return canvas;
+    }
+
+    function createImageVariants(
+        sourceCanvas
+    ) {
+        const baseCanvas =
+            prepareBaseCanvas(
+                sourceCanvas
+            );
+
+        return [
+            {
+                name: "Original",
+                canvas: baseCanvas
+            },
+            {
+                name: "Graustufe + Kontrast",
+                canvas:
+                    createGrayscaleContrastCanvas(
+                        baseCanvas
+                    )
+            },
+            {
+                name: "Schwarz/Weiß",
+                canvas:
+                    createThresholdCanvas(
+                        baseCanvas
+                    )
+            }
+        ];
+    }
+
+    function getCandidateScore(
+        ocrData,
+        confidence
+    ) {
+        let score = 0;
+
+        if (ocrData.partNumber) {
+            score += 100;
+        }
+
+        if (ocrData.serialNumber) {
+            score += 100;
+        }
+
+        if (ocrData.hardware) {
+            score += 30;
+        }
+
+        if (ocrData.software) {
+            score += 30;
+        }
+
+        const normalizedConfidence =
+            Number.isFinite(
+                Number(confidence)
+            )
+                ? Math.max(
+                    0,
+                    Math.min(
+                        100,
+                        Number(confidence)
+                    )
+                )
+                : 0;
+
+        score +=
+            normalizedConfidence /
+            10;
+
+        return score;
+    }
+
+    function emitProgress(message) {
+        if (
+            typeof progressCallback ===
+            "function"
+        ) {
+            progressCallback({
+                ...message,
+                passLabel
+            });
+        }
+    }
+
+    async function getWorker() {
+        if (worker) {
+            return worker;
+        }
+
+        if (workerPromise) {
+            return workerPromise;
+        }
+
+        if (
+            !global.Tesseract ||
+            typeof global.Tesseract.createWorker !==
+            "function"
+        ) {
+            throw new Error(
+                "Die OCR-Bibliothek Tesseract.js konnte nicht geladen werden. Bitte Internetverbindung prüfen und die Seite neu laden."
+            );
+        }
+
+        workerPromise =
+            global.Tesseract.createWorker(
+                "eng",
+                1,
+                {
+                    logger:
+                        emitProgress
+                }
+            );
+
+        try {
+            worker =
+                await workerPromise;
+
+            return worker;
+        }
+        finally {
+            workerPromise = null;
+        }
+    }
+
+    async function recognizeBest(
+        sourceCanvas,
+        qrData,
+        options = {}
+    ) {
+        progressCallback =
+            typeof options.onProgress ===
+            "function"
+                ? options.onProgress
+                : null;
+
+        passLabel = "";
+
+        const activeWorker =
+            await getWorker();
+
+        const variants =
+            createImageVariants(
+                sourceCanvas
+            );
+
+        let bestCandidate = null;
+
+        for (
+            let index = 0;
+            index < variants.length;
+            index += 1
+        ) {
+            const variant =
+                variants[index];
+
+            passLabel =
+                `Variante ${index + 1}/${variants.length}: ${variant.name}`;
+
+            emitProgress({
+                stage: "variant",
+                status:
+                    `${passLabel} wird ausgewertet`,
+                progress:
+                    index /
+                    variants.length
+            });
+
+            const result =
+                await activeWorker.recognize(
+                    variant.canvas,
+                    {
+                        rotateAuto: true
+                    }
+                );
+
+            const rawText =
+                result &&
+                result.data &&
+                result.data.text
+                    ? result.data.text
+                    : "";
+
+            const confidence =
+                result &&
+                result.data &&
+                Number.isFinite(
+                    Number(
+                        result.data.confidence
+                    )
+                )
+                    ? Number(
+                        result.data.confidence
+                    )
+                    : 0;
+
+            const ocrData =
+                extractTrackingData(
+                    rawText
+                );
+
+            const missingFields =
+                getMissingFieldsForQr(
+                    ocrData,
+                    qrData
+                );
+
+            const candidate = {
+                variantName:
+                    variant.name,
+                rawText,
+                confidence,
+                ocrData,
+                missingFields,
+                complete:
+                    missingFields.length === 0,
+                score:
+                    getCandidateScore(
+                        ocrData,
+                        confidence
+                    )
+            };
+
+            if (
+                !bestCandidate ||
+                candidate.score >
+                bestCandidate.score
+            ) {
+                bestCandidate =
+                    candidate;
+            }
+
+            if (candidate.complete) {
+                bestCandidate =
+                    candidate;
+
+                break;
+            }
+        }
+
+        passLabel = "";
+        progressCallback = null;
+
+        if (!bestCandidate) {
+            throw new Error(
+                "Die sichtbare Label-Beschriftung konnte nicht ausgewertet werden."
+            );
+        }
+
+        return bestCandidate;
+    }
+
+    async function terminate() {
+        progressCallback = null;
+        passLabel = "";
+
+        if (worker) {
+            const activeWorker = worker;
+            worker = null;
+
+            try {
+                await activeWorker.terminate();
+            }
+            catch {
+                // Beim Verlassen der Seite ist keine weitere Aktion nötig.
+            }
+        }
+    }
+
+    global.TeiletrackingOcrService = Object.freeze({
+        loadConfig,
+        getProfileName,
+        recognizeBest,
+        buildTrackingString,
+        getMissingFieldsForQr,
+        terminate
+    });
+})(window);
