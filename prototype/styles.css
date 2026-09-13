@@ -1679,3 +1679,52 @@ body.scanner-open {
     }
 }
 
+.scan-retry-hint {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 13px 14px;
+    border: 1px solid var(--double-text);
+    border-radius: 10px;
+    background: var(--double-bg);
+    color: var(--double-text);
+}
+
+.scan-retry-hint.hidden {
+    display: none;
+}
+
+.scan-retry-hint.manual {
+    border-color: var(--error-text);
+    background: var(--error-bg);
+    color: var(--error-text);
+}
+
+.scan-retry-hint strong {
+    display: block;
+    margin-bottom: 3px;
+    font-size: 0.95rem;
+}
+
+.scan-retry-hint p {
+    margin: 0;
+    font-size: 0.86rem;
+    font-weight: 700;
+}
+
+.scan-retry-hint .button.hidden {
+    display: none;
+}
+
+@media (max-width: 720px) {
+    .scan-retry-hint {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .scan-retry-hint .button {
+        width: 100%;
+    }
+}
+

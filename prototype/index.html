@@ -541,6 +541,25 @@
                     Kamera wird vorbereitet …
                 </p>
 
+                <div
+                    id="scanRetryHint"
+                    class="scan-retry-hint hidden"
+                    aria-live="assertive"
+                >
+                    <div>
+                        <strong id="scanRetryTitle">Bitte erneut scannen</strong>
+                        <p id="scanRetryText"></p>
+                    </div>
+
+                    <button
+                        id="manualAddAfterScanButton"
+                        class="button button-secondary button-small hidden"
+                        type="button"
+                    >
+                        Manuell hinzufügen
+                    </button>
+                </div>
+
                 <div class="scanner-actions scanner-actions-capture">
                     <button
                         id="captureLabelButton"
@@ -571,6 +590,8 @@
                     Richte das komplette Label so aus, dass QR-Code und sichtbare Beschriftung gut lesbar sind.
                     Mit „Label aufnehmen“ wird ein einzelnes Foto erzeugt. Aus genau diesem Bild werden anschließend
                     der QR-Code und die sichtbare Beschriftung gelesen und miteinander verglichen.
+                    Ist die Aufnahme nicht vollständig lesbar, erscheint „Bitte erneut scannen“.
+                    Nach dem fünften erfolglosen Versuch wird „Manuell hinzufügen“ angeboten.
                 </p>
             </div>
         </section>

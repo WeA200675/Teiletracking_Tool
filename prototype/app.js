@@ -86,7 +86,10 @@ const state = {
     labelOcrWorkerPromise: null,
     labelOcrBusy: false,
     ocrConfig: JSON.parse(JSON.stringify(DEFAULT_OCR_CONFIG)),
-    ocrConfigSource: "DEFAULT"
+    ocrConfigSource: "DEFAULT",
+    labelOcrPassLabel: "",
+    labelScanAttempts: 0,
+    maxLabelScanAttempts: 5
 };
 
 const elements = {
@@ -185,7 +188,11 @@ const elements = {
     labelOcrSerialNumberCompare: document.getElementById("labelOcrSerialNumberCompare"),
     labelOcrHardwareCompare: document.getElementById("labelOcrHardwareCompare"),
     labelOcrSoftwareCompare: document.getElementById("labelOcrSoftwareCompare"),
-    applyOcrValuesButton: document.getElementById("applyOcrValuesButton")
+    applyOcrValuesButton: document.getElementById("applyOcrValuesButton"),
+    scanRetryHint: document.getElementById("scanRetryHint"),
+    scanRetryTitle: document.getElementById("scanRetryTitle"),
+    scanRetryText: document.getElementById("scanRetryText"),
+    manualAddAfterScanButton: document.getElementById("manualAddAfterScanButton")
 };
 
 function normalizeText(value) {
@@ -1398,6 +1405,108 @@ function addIStufe() {
 
 
 
+
+function hideScanRetryHint() {
+    elements.scanRetryHint.classList.add(
+        "hidden"
+    );
+
+    elements.scanRetryHint.classList.remove(
+        "manual"
+    );
+
+    elements.manualAddAfterScanButton.classList.add(
+        "hidden"
+    );
+
+    elements.scanRetryTitle.textContent =
+        "Bitte erneut scannen";
+
+    elements.scanRetryText.textContent = "";
+}
+
+function resetLabelScanAttempts() {
+    state.labelScanAttempts = 0;
+    hideScanRetryHint();
+}
+
+function registerLabelScanSuccess() {
+    state.labelScanAttempts = 0;
+    hideScanRetryHint();
+}
+
+function registerLabelScanFailure(
+    reason
+) {
+    state.labelScanAttempts += 1;
+
+    const currentAttempt =
+        Math.min(
+            state.labelScanAttempts,
+            state.maxLabelScanAttempts
+        );
+
+    elements.scanRetryHint.classList.remove(
+        "hidden"
+    );
+
+    if (
+        currentAttempt >=
+        state.maxLabelScanAttempts
+    ) {
+        elements.scanRetryHint.classList.add(
+            "manual"
+        );
+
+        elements.scanRetryTitle.textContent =
+            "Manuell hinzufügen";
+
+        elements.scanRetryText.textContent =
+            `Auch nach ${state.maxLabelScanAttempts} Scanversuchen konnten nicht alle benötigten Daten zuverlässig gelesen werden. ${reason} Bitte die Werte jetzt manuell erfassen.`;
+
+        elements.manualAddAfterScanButton.classList.remove(
+            "hidden"
+        );
+
+        setQrScannerStatus(
+            "Manuell hinzufügen: Nach 5 Scanversuchen ist keine vollständige automatische Erkennung gelungen.",
+            "error"
+        );
+
+        return;
+    }
+
+    elements.scanRetryHint.classList.remove(
+        "manual"
+    );
+
+    elements.scanRetryTitle.textContent =
+        "Bitte erneut scannen";
+
+    elements.scanRetryText.textContent =
+        `Versuch ${currentAttempt} von ${state.maxLabelScanAttempts} war nicht vollständig lesbar. ${reason} Bitte Label neu ausrichten und erneut scannen.`;
+
+    elements.manualAddAfterScanButton.classList.add(
+        "hidden"
+    );
+
+    setQrScannerStatus(
+        `Bitte erneut scannen · Versuch ${currentAttempt} von ${state.maxLabelScanAttempts}.`,
+        "error"
+    );
+}
+
+function openManualEntryAfterScan() {
+    closeQrScanner();
+
+    setQrScanResult(
+        "Automatische Erkennung nach 5 Versuchen nicht vollständig. Bitte QR- und Label-Daten manuell hinzufügen.",
+        "error"
+    );
+
+    elements.labelInput.focus();
+}
+
 function setQrScanResult(message, type = "") {
     elements.qrScanResult.classList.remove(
         "success",
@@ -1784,6 +1893,11 @@ function updateLabelOcrWorkerProgress(message) {
     const progress =
         Number(message.progress);
 
+    const passPrefix =
+        state.labelOcrPassLabel
+            ? `${state.labelOcrPassLabel} · `
+            : "";
+
     if (
         Number.isFinite(progress) &&
         progress >= 0 &&
@@ -1799,7 +1913,7 @@ function updateLabelOcrWorkerProgress(message) {
 
         if (status) {
             setLabelOcrStatus(
-                `OCR läuft: ${status} …`
+                `${passPrefix}OCR läuft: ${status} …`
             );
         }
 
@@ -1808,10 +1922,11 @@ function updateLabelOcrWorkerProgress(message) {
 
     if (status) {
         setLabelOcrStatus(
-            `OCR wird vorbereitet: ${status} …`
+            `${passPrefix}OCR wird vorbereitet: ${status} …`
         );
     }
 }
+
 
 async function getLabelOcrWorker() {
     if (state.labelOcrWorker) {
@@ -2693,6 +2808,348 @@ function prepareLabelOcrCanvas(
     return canvas;
 }
 
+function cloneOcrCanvas(
+    sourceCanvas
+) {
+    const canvas =
+        document.createElement("canvas");
+
+    canvas.width =
+        sourceCanvas.width;
+
+    canvas.height =
+        sourceCanvas.height;
+
+    const context =
+        canvas.getContext(
+            "2d",
+            {
+                willReadFrequently: true
+            }
+        );
+
+    if (!context) {
+        throw new Error(
+            "OCR-Bildvariante konnte nicht erstellt werden."
+        );
+    }
+
+    context.drawImage(
+        sourceCanvas,
+        0,
+        0
+    );
+
+    return {
+        canvas,
+        context
+    };
+}
+
+function createGrayscaleContrastOcrCanvas(
+    sourceCanvas
+) {
+    const { canvas, context } =
+        cloneOcrCanvas(
+            sourceCanvas
+        );
+
+    const imageData =
+        context.getImageData(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+    const data =
+        imageData.data;
+
+    const contrast = 1.45;
+
+    for (
+        let index = 0;
+        index < data.length;
+        index += 4
+    ) {
+        const luminance =
+            (
+                data[index] * 0.299 +
+                data[index + 1] * 0.587 +
+                data[index + 2] * 0.114
+            );
+
+        const adjusted =
+            Math.max(
+                0,
+                Math.min(
+                    255,
+                    (
+                        luminance - 128
+                    ) *
+                    contrast +
+                    128
+                )
+            );
+
+        data[index] = adjusted;
+        data[index + 1] = adjusted;
+        data[index + 2] = adjusted;
+    }
+
+    context.putImageData(
+        imageData,
+        0,
+        0
+    );
+
+    return canvas;
+}
+
+function getAutomaticThreshold(
+    imageData
+) {
+    const histogram =
+        new Array(256).fill(0);
+
+    const data =
+        imageData.data;
+
+    for (
+        let index = 0;
+        index < data.length;
+        index += 4
+    ) {
+        const luminance =
+            Math.round(
+                data[index] * 0.299 +
+                data[index + 1] * 0.587 +
+                data[index + 2] * 0.114
+            );
+
+        histogram[luminance] += 1;
+    }
+
+    const totalPixels =
+        imageData.width *
+        imageData.height;
+
+    let weightedSum = 0;
+
+    for (
+        let value = 0;
+        value < 256;
+        value += 1
+    ) {
+        weightedSum +=
+            value *
+            histogram[value];
+    }
+
+    let backgroundWeight = 0;
+    let backgroundSum = 0;
+    let maximumVariance = -1;
+    let threshold = 160;
+
+    for (
+        let value = 0;
+        value < 256;
+        value += 1
+    ) {
+        backgroundWeight +=
+            histogram[value];
+
+        if (backgroundWeight === 0) {
+            continue;
+        }
+
+        const foregroundWeight =
+            totalPixels -
+            backgroundWeight;
+
+        if (foregroundWeight === 0) {
+            break;
+        }
+
+        backgroundSum +=
+            value *
+            histogram[value];
+
+        const backgroundMean =
+            backgroundSum /
+            backgroundWeight;
+
+        const foregroundMean =
+            (
+                weightedSum -
+                backgroundSum
+            ) /
+            foregroundWeight;
+
+        const variance =
+            backgroundWeight *
+            foregroundWeight *
+            Math.pow(
+                backgroundMean -
+                foregroundMean,
+                2
+            );
+
+        if (
+            variance >
+            maximumVariance
+        ) {
+            maximumVariance =
+                variance;
+
+            threshold =
+                value;
+        }
+    }
+
+    return threshold;
+}
+
+function createThresholdOcrCanvas(
+    sourceCanvas
+) {
+    const { canvas, context } =
+        cloneOcrCanvas(
+            sourceCanvas
+        );
+
+    const imageData =
+        context.getImageData(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+    const threshold =
+        getAutomaticThreshold(
+            imageData
+        );
+
+    const data =
+        imageData.data;
+
+    for (
+        let index = 0;
+        index < data.length;
+        index += 4
+    ) {
+        const luminance =
+            (
+                data[index] * 0.299 +
+                data[index + 1] * 0.587 +
+                data[index + 2] * 0.114
+            );
+
+        const value =
+            luminance >= threshold
+                ? 255
+                : 0;
+
+        data[index] = value;
+        data[index + 1] = value;
+        data[index + 2] = value;
+    }
+
+    context.putImageData(
+        imageData,
+        0,
+        0
+    );
+
+    return canvas;
+}
+
+function createOcrImageVariants(
+    sourceCanvas
+) {
+    const baseCanvas =
+        prepareLabelOcrCanvas(
+            sourceCanvas
+        );
+
+    return [
+        {
+            name: "Original",
+            canvas: baseCanvas
+        },
+        {
+            name: "Graustufe + Kontrast",
+            canvas:
+                createGrayscaleContrastOcrCanvas(
+                    baseCanvas
+                )
+        },
+        {
+            name: "Schwarz/Weiß",
+            canvas:
+                createThresholdOcrCanvas(
+                    baseCanvas
+                )
+        }
+    ];
+}
+
+function getOcrCandidateScore(
+    ocrData,
+    confidence
+) {
+    let score = 0;
+
+    if (ocrData.partNumber) {
+        score += 100;
+    }
+
+    if (ocrData.serialNumber) {
+        score += 100;
+    }
+
+    if (ocrData.hardware) {
+        score += 30;
+    }
+
+    if (ocrData.software) {
+        score += 30;
+    }
+
+    const normalizedConfidence =
+        Number.isFinite(
+            Number(confidence)
+        )
+            ? Math.max(
+                0,
+                Math.min(
+                    100,
+                    Number(confidence)
+                )
+            )
+            : 0;
+
+    score +=
+        normalizedConfidence /
+        10;
+
+    return score;
+}
+
+function isOcrCandidateComplete(
+    ocrData,
+    qrData
+) {
+    return (
+        getMissingOcrFieldsForQr(
+            ocrData,
+            qrData
+        ).length === 0
+    );
+}
+
+
 async function recognizeVisibleLabelText(
     sourceCanvas,
     qrText
@@ -2711,35 +3168,135 @@ async function recognizeVisibleLabelText(
     );
 
     state.labelOcrBusy = true;
+    state.labelOcrPassLabel = "";
 
     try {
         const worker =
             await getLabelOcrWorker();
 
-        const ocrCanvas =
-            prepareLabelOcrCanvas(
+        let qrData = null;
+
+        try {
+            if (qrText) {
+                qrData =
+                    parseTrackingString(
+                        qrText
+                    );
+            }
+        }
+        catch {
+            qrData = null;
+        }
+
+        const variants =
+            createOcrImageVariants(
                 sourceCanvas
             );
 
-        const result =
-            await worker.recognize(
-                ocrCanvas,
-                {
-                    rotateAuto: true
-                }
+        let bestCandidate = null;
+
+        for (
+            let index = 0;
+            index < variants.length;
+            index += 1
+        ) {
+            const variant =
+                variants[index];
+
+            state.labelOcrPassLabel =
+                `Variante ${index + 1}/${variants.length}: ${variant.name}`;
+
+            setLabelOcrProgress(
+                `${index + 1}/${variants.length}`,
+                "running"
             );
 
-        const rawText =
-            result &&
-            result.data &&
-            result.data.text
-                ? result.data.text
-                : "";
-
-        const ocrData =
-            extractTrackingDataFromOcrText(
-                rawText
+            setLabelOcrStatus(
+                `${state.labelOcrPassLabel} wird ausgewertet …`
             );
+
+            const result =
+                await worker.recognize(
+                    variant.canvas,
+                    {
+                        rotateAuto: true
+                    }
+                );
+
+            const rawText =
+                result &&
+                result.data &&
+                result.data.text
+                    ? result.data.text
+                    : "";
+
+            const confidence =
+                result &&
+                result.data &&
+                Number.isFinite(
+                    Number(
+                        result.data.confidence
+                    )
+                )
+                    ? Number(
+                        result.data.confidence
+                    )
+                    : 0;
+
+            const ocrData =
+                extractTrackingDataFromOcrText(
+                    rawText
+                );
+
+            const candidate = {
+                variantName:
+                    variant.name,
+                rawText,
+                confidence,
+                ocrData,
+                score:
+                    getOcrCandidateScore(
+                        ocrData,
+                        confidence
+                    )
+            };
+
+            if (
+                !bestCandidate ||
+                candidate.score >
+                bestCandidate.score
+            ) {
+                bestCandidate =
+                    candidate;
+            }
+
+            if (
+                isOcrCandidateComplete(
+                    ocrData,
+                    qrData
+                )
+            ) {
+                bestCandidate =
+                    candidate;
+
+                break;
+            }
+        }
+
+        state.labelOcrPassLabel = "";
+
+        if (!bestCandidate) {
+            throw new Error(
+                "Die sichtbare Label-Beschriftung konnte nicht ausgewertet werden."
+            );
+        }
+
+        const {
+            ocrData,
+            rawText,
+            variantName,
+            confidence
+        } = bestCandidate;
 
         renderLabelOcrResult(
             ocrData,
@@ -2756,25 +3313,18 @@ async function recognizeVisibleLabelText(
                 labelTrackingString;
         }
 
-        let qrData = null;
-
-        try {
-            if (qrText) {
-                qrData =
-                    parseTrackingString(
-                        qrText
-                    );
-            }
-        }
-        catch {
-            qrData = null;
-        }
-
         const missingFields =
             getMissingOcrFieldsForQr(
                 ocrData,
                 qrData
             );
+
+        const confidenceText =
+            Number.isFinite(
+                Number(confidence)
+            )
+                ? `${Math.round(confidence)} %`
+                : "–";
 
         if (missingFields.length > 0) {
             setLabelOcrProgress(
@@ -2783,13 +3333,16 @@ async function recognizeVisibleLabelText(
             );
 
             setLabelOcrStatus(
-                `OCR abgeschlossen, aber folgende Vergleichsfelder wurden nicht sicher erkannt: ${missingFields.join(", ")}. Bitte Label-Eingabe kontrollieren oder manuell korrigieren.`,
+                `Beste OCR-Variante: ${variantName} · OCR-Konfidenz: ${confidenceText}. Nicht sicher erkannt: ${missingFields.join(", ")}. Bitte erneut scannen oder die Werte manuell korrigieren.`,
                 "warning"
             );
 
             return {
                 ocrData,
-                complete: false
+                complete: false,
+                variantName,
+                confidence,
+                missingFields
             };
         }
 
@@ -2799,16 +3352,21 @@ async function recognizeVisibleLabelText(
         );
 
         setLabelOcrStatus(
-            `OCR abgeschlossen · Mapping: ${getOcrProfileName()}. Bitte die erkannten Werte kontrollieren und anschließend „OCR-Werte übernehmen & vergleichen“ verwenden.`,
+            `OCR abgeschlossen · Variante: ${variantName} · Konfidenz: ${confidenceText} · Mapping: ${getOcrProfileName()}. Bitte die erkannten Werte kontrollieren und anschließend „OCR-Werte übernehmen & vergleichen“ verwenden.`,
             "success"
         );
 
         return {
             ocrData,
-            complete: true
+            complete: true,
+            variantName,
+            confidence,
+            missingFields: []
         };
     }
     catch (error) {
+        state.labelOcrPassLabel = "";
+
         setLabelOcrProgress(
             "Fehler",
             "error"
@@ -2824,8 +3382,10 @@ async function recognizeVisibleLabelText(
     }
     finally {
         state.labelOcrBusy = false;
+        state.labelOcrPassLabel = "";
     }
 }
+
 
 async function terminateLabelOcrWorker() {
     if (state.labelOcrWorker) {
@@ -2949,6 +3509,7 @@ async function captureLabelPhoto() {
 
     try {
         clearLabelOcrResult();
+        hideScanRetryHint();
 
         setQrScannerStatus(
             "Label wird aufgenommen. Danach werden QR-Code und sichtbare Beschriftung aus demselben Foto gelesen …"
@@ -2969,10 +3530,13 @@ async function captureLabelPhoto() {
                 context
             );
 
+        let qrReadable = false;
+        let qrFailureReason = "";
+
         showCapturedLabelPreview(
             dataUrl,
             qrText
-                ? "Foto gespeichert. QR-Code erkannt. Sichtbare Beschriftung wird jetzt per OCR gelesen."
+                ? "Foto gespeichert. QR-Code erkannt. Sichtbare Beschriftung wird jetzt mit mehreren Bildvarianten per OCR gelesen."
                 : "Foto gespeichert. Kein QR-Code erkannt. Die sichtbare Beschriftung wird trotzdem per OCR gelesen."
         );
 
@@ -2985,6 +3549,8 @@ async function captureLabelPhoto() {
                     qrText
                 );
 
+                qrReadable = true;
+
                 setQrScanResult(
                     "QR-Code aus der Labelaufnahme erkannt.",
                     "success"
@@ -2995,8 +3561,11 @@ async function captureLabelPhoto() {
                 );
             }
             catch (error) {
+                qrFailureReason =
+                    "Der QR-Code wurde erkannt, konnte aber nicht vollständig ausgewertet werden.";
+
                 setQrScanResult(
-                    "QR-Code erkannt, aber das Datenformat passt noch nicht zum aktuellen Testparser.",
+                    "QR-Code erkannt, aber das Datenformat passt noch nicht zum aktuellen Parser.",
                     "error"
                 );
 
@@ -3007,6 +3576,9 @@ async function captureLabelPhoto() {
             }
         }
         else {
+            qrFailureReason =
+                "Der QR-Code war nicht lesbar.";
+
             setQrScanResult(
                 "Label aufgenommen, aber kein QR-Code erkannt.",
                 "error"
@@ -3033,33 +3605,75 @@ async function captureLabelPhoto() {
             );
         }
 
-        if (
-            ocrResult &&
-            ocrResult.complete
-        ) {
+        const ocrComplete =
+            Boolean(
+                ocrResult &&
+                ocrResult.complete
+            );
+
+        const scanComplete =
+            qrReadable &&
+            ocrComplete;
+
+        if (scanComplete) {
+            registerLabelScanSuccess();
+
             setQrScannerStatus(
-                "Aufnahme abgeschlossen. Bitte jetzt die OCR-Werte unter dem aufgenommenen Label kontrollieren, bei Bedarf korrigieren und anschließend übernehmen.",
+                `Aufnahme erfolgreich. QR-Code und sichtbare Label-Beschriftung wurden gelesen. Beste OCR-Variante: ${ocrResult.variantName}. Bitte die OCR-Werte kontrollieren und anschließend übernehmen.`,
                 "success"
             );
+
+            return;
         }
-        else {
-            setQrScannerStatus(
-                "Aufnahme abgeschlossen. Bitte die erkannten OCR-Werte kontrollieren und fehlende Felder manuell ergänzen.",
-                "error"
+
+        const reasons = [];
+
+        if (!qrReadable) {
+            reasons.push(
+                qrFailureReason ||
+                "Der QR-Code war nicht lesbar."
             );
         }
+
+        if (!ocrComplete) {
+            if (
+                ocrResult &&
+                Array.isArray(
+                    ocrResult.missingFields
+                ) &&
+                ocrResult.missingFields.length > 0
+            ) {
+                reasons.push(
+                    `OCR unvollständig: ${ocrResult.missingFields.join(", ")}.`
+                );
+            }
+            else {
+                reasons.push(
+                    "Die sichtbare Label-Beschriftung war nicht vollständig lesbar."
+                );
+            }
+        }
+
+        registerLabelScanFailure(
+            reasons.join(" ")
+        );
     }
     catch (error) {
-        setQrScannerStatus(
+        console.error(
+            "Label-Aufnahme fehlgeschlagen:",
+            error
+        );
+
+        registerLabelScanFailure(
             error.message ||
-            "Die Label-Aufnahme ist fehlgeschlagen.",
-            "error"
+            "Die Aufnahme konnte nicht verarbeitet werden."
         );
     }
     finally {
         elements.captureLabelButton.disabled = false;
     }
 }
+
 
 async function scanQrVideoFrame() {
     // Absichtlich keine automatische Übernahme mehr.
@@ -3148,6 +3762,7 @@ async function startQrScannerCamera() {
 
 async function openQrScanner() {
     setQrScanResult("");
+    resetLabelScanAttempts();
 
     elements.qrScannerOverlay.classList.remove(
         "hidden"
@@ -3159,6 +3774,7 @@ async function openQrScanner() {
 
     await startQrScannerCamera();
 }
+
 
 function showTrackingTransferMessage(message, type) {
     elements.trackingTransferMessage.classList.remove(
@@ -4573,6 +5189,11 @@ elements.retryQrScannerButton.addEventListener(
 elements.captureLabelButton.addEventListener(
     "click",
     captureLabelPhoto
+);
+
+elements.manualAddAfterScanButton.addEventListener(
+    "click",
+    openManualEntryAfterScan
 );
 
 elements.removeCapturedLabelButton.addEventListener(
