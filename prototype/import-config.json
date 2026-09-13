@@ -12,5 +12,6 @@
     "Libraries": {
       "TrackingImportArchiv": "TrackingImportArchiv"
     }
-  }
+  },
+  "MappingConfigUrl": "./sharepoint-import-map.json"
 }

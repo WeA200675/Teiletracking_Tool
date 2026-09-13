@@ -1,0 +1,294 @@
+{
+  "Version": 1,
+  "Description": "Verbindlicher Feldvertrag zwischen geprüftem Migrationspaket und SharePoint-Zielstruktur.",
+  "Targets": {
+    "Steuergeraete": {
+      "Kind": "List",
+      "LogicalTarget": "Steuergeraete",
+      "RequiredForImport": [
+        "Title",
+        "DeviceKey",
+        "PartNumber",
+        "SerialNumber",
+        "Derivat",
+        "IStufe",
+        "ValidationStatus",
+        "DoppelDerivat",
+        "AssignmentKey",
+        "SourceRecordId",
+        "ImportBatchId",
+        "SourceDeviceId",
+        "SourceOrigin",
+        "CapturedAt",
+        "ImportedAt",
+        "ImportedBy",
+        "RecordHash"
+      ],
+      "Fields": {
+        "Title": {
+          "Source": "record.AssignmentKey",
+          "FallbackSource": "record.RecordId",
+          "Type": "Text"
+        },
+        "DeviceKey": {
+          "Source": "record.DeviceKey",
+          "Type": "Text"
+        },
+        "PartNumber": {
+          "Source": "record.PartNumber",
+          "Type": "Text"
+        },
+        "SerialNumber": {
+          "Source": "record.SerialNumber",
+          "Type": "Text"
+        },
+        "Derivat": {
+          "Source": "record.Derivat",
+          "Type": "Text"
+        },
+        "IStufe": {
+          "Source": "record.IStufe",
+          "Type": "Text"
+        },
+        "LabelPartNumber": {
+          "Source": "record.LabelPartNumber",
+          "Type": "Text"
+        },
+        "QRPartNumber": {
+          "Source": "record.QRPartNumber",
+          "Type": "Text"
+        },
+        "LabelSerialNumber": {
+          "Source": "record.LabelSerialNumber",
+          "Type": "Text"
+        },
+        "QRSerialNumber": {
+          "Source": "record.QRSerialNumber",
+          "Type": "Text"
+        },
+        "ValidationStatus": {
+          "Source": "record.ValidationStatus",
+          "Type": "Choice"
+        },
+        "DoppelDerivat": {
+          "Source": "record.DoppelDerivat",
+          "Type": "Boolean"
+        },
+        "AssignmentKey": {
+          "Source": "record.AssignmentKey",
+          "Type": "Text"
+        },
+        "LabelHardware": {
+          "Source": "record.LabelHardware",
+          "Type": "Text"
+        },
+        "QRHardware": {
+          "Source": "record.QRHardware",
+          "Type": "Text"
+        },
+        "LabelSoftware": {
+          "Source": "record.LabelSoftware",
+          "Type": "Text"
+        },
+        "QRSoftware": {
+          "Source": "record.QRSoftware",
+          "Type": "Text"
+        },
+        "SourceRecordId": {
+          "Source": "record.RecordId",
+          "Type": "Text"
+        },
+        "ImportBatchId": {
+          "Source": "record.BatchId",
+          "Type": "Text"
+        },
+        "SourceDeviceId": {
+          "Source": "record.SourceDeviceId",
+          "Type": "Text"
+        },
+        "SourceOrigin": {
+          "Source": "record.SourceOrigin",
+          "Type": "Choice"
+        },
+        "CapturedAt": {
+          "Source": "record.CapturedAt",
+          "Type": "DateTime"
+        },
+        "ImportedAt": {
+          "Source": "context.ImportedAt",
+          "Type": "DateTime"
+        },
+        "ImportedBy": {
+          "Source": "context.ImportedBy",
+          "Type": "Text"
+        },
+        "RecordHash": {
+          "Source": "record.RecordHash",
+          "Type": "Text"
+        },
+        "LabelImageFile": {
+          "Source": "record.LabelImageFile",
+          "Type": "Text"
+        },
+        "LabelImageHash": {
+          "Source": "record.LabelImageHash",
+          "Type": "Text"
+        }
+      }
+    },
+    "ImportBatches": {
+      "Kind": "List",
+      "LogicalTarget": "ImportBatches",
+      "RequiredForImport": [
+        "Title",
+        "BatchId",
+        "DeviceId",
+        "PackageHash",
+        "CreatedAt",
+        "ImportedAt",
+        "ImportedBy",
+        "SchemaVersion",
+        "PackageFormatVersion",
+        "RecordCount",
+        "ImportedCount",
+        "SkippedDuplicateCount",
+        "ConflictCount",
+        "ImageCount",
+        "FileName",
+        "ImportStatus"
+      ],
+      "Fields": {
+        "Title": {
+          "Source": "package.batchId",
+          "Type": "Text"
+        },
+        "BatchId": {
+          "Source": "package.batchId",
+          "Type": "Text"
+        },
+        "DeviceId": {
+          "Source": "package.deviceId",
+          "Type": "Text"
+        },
+        "PackageHash": {
+          "Source": "package.packageHash",
+          "Type": "Text"
+        },
+        "CreatedAt": {
+          "Source": "package.manifest.CreatedAt",
+          "Type": "DateTime"
+        },
+        "ImportedAt": {
+          "Source": "context.ImportedAt",
+          "Type": "DateTime"
+        },
+        "ImportedBy": {
+          "Source": "context.ImportedBy",
+          "Type": "Text"
+        },
+        "AppVersion": {
+          "Source": "package.manifest.AppVersion",
+          "Type": "Text"
+        },
+        "SchemaVersion": {
+          "Source": "package.manifest.SchemaVersion",
+          "Type": "Number"
+        },
+        "PackageFormatVersion": {
+          "Source": "package.manifest.PackageFormatVersion",
+          "Type": "Number"
+        },
+        "RecordCount": {
+          "Source": "package.manifest.RecordCount",
+          "Type": "Number"
+        },
+        "ImportedCount": {
+          "Source": "preflight.importCount",
+          "Type": "Number"
+        },
+        "SkippedDuplicateCount": {
+          "Source": "preflight.duplicateCount",
+          "Type": "Number"
+        },
+        "ConflictCount": {
+          "Source": "preflight.conflictCount",
+          "Type": "Number"
+        },
+        "ImageCount": {
+          "Source": "package.manifest.ImageCount",
+          "Type": "Number"
+        },
+        "FileName": {
+          "Source": "package.fileName",
+          "Type": "Text"
+        },
+        "ImportStatus": {
+          "Constant": "IMPORTED",
+          "Type": "Choice"
+        },
+        "TrackingDataHash": {
+          "Source": "package.manifest.TrackingDataHash",
+          "Type": "Text"
+        }
+      }
+    },
+    "TrackingImportArchiv": {
+      "Kind": "DocumentLibrary",
+      "LogicalTarget": "TrackingImportArchiv",
+      "FileNameSource": "package.fileName",
+      "RequiredForImport": [
+        "BatchId",
+        "DeviceId",
+        "PackageHash",
+        "PackageCreatedAt",
+        "ImportedAt",
+        "ImportedBy",
+        "SchemaVersion",
+        "RecordCount",
+        "ImportStatus"
+      ],
+      "Fields": {
+        "BatchId": {
+          "Source": "package.batchId",
+          "Type": "Text"
+        },
+        "DeviceId": {
+          "Source": "package.deviceId",
+          "Type": "Text"
+        },
+        "PackageHash": {
+          "Source": "package.packageHash",
+          "Type": "Text"
+        },
+        "PackageCreatedAt": {
+          "Source": "package.manifest.CreatedAt",
+          "Type": "DateTime"
+        },
+        "ImportedAt": {
+          "Source": "context.ImportedAt",
+          "Type": "DateTime"
+        },
+        "ImportedBy": {
+          "Source": "context.ImportedBy",
+          "Type": "Text"
+        },
+        "AppVersion": {
+          "Source": "package.manifest.AppVersion",
+          "Type": "Text"
+        },
+        "SchemaVersion": {
+          "Source": "package.manifest.SchemaVersion",
+          "Type": "Number"
+        },
+        "RecordCount": {
+          "Source": "package.manifest.RecordCount",
+          "Type": "Number"
+        },
+        "ImportStatus": {
+          "Constant": "IMPORTED",
+          "Type": "Choice"
+        }
+      }
+    }
+  }
+}

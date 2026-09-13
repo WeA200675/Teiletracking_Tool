@@ -103,10 +103,33 @@
         </section>
 
         <section
+            id="mappingCard"
+            class="card hidden"
+        >
+            <h2>5. SharePoint-Zielabbildung</h2>
+
+            <p class="muted">
+                Dieser Feldvertrag wird später unverändert vom echten
+                SharePoint-Provider verwendet. Der lokale Mock speichert
+                bereits exakt dieselben Zielwerte.
+            </p>
+
+            <div
+                id="mappingSummary"
+                class="summary-grid"
+            ></div>
+
+            <div
+                id="mappingTargets"
+                class="mapping-contract"
+            ></div>
+        </section>
+
+        <section
             id="recordsCard"
             class="card hidden"
         >
-            <h2>5. Datensatzvorschau</h2>
+            <h2>6. Datensatzvorschau</h2>
 
             <div class="table-wrap">
                 <table>
@@ -132,7 +155,7 @@
             id="importCard"
             class="card hidden"
         >
-            <h2>6. Kontrollierter Import</h2>
+            <h2>7. Kontrollierter Import</h2>
 
             <div class="import-meta-row">
                 <label class="input-field">
@@ -192,6 +215,7 @@
         src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"
     ></script>
     <script src="./migration-import-service.js"></script>
+    <script src="./sharepoint-mapping-service.js"></script>
     <script src="./import-destination-service.js"></script>
     <script src="./importer.js"></script>
 </body>

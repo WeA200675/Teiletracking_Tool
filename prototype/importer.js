@@ -3,6 +3,7 @@
 const state = {
     verifiedPackage: null,
     preflight: null,
+    mappingContract: null,
     lastImportLog: null
 };
 
@@ -50,6 +51,18 @@ const elements = {
     preflightSummary:
         document.getElementById(
             "preflightSummary"
+        ),
+    mappingCard:
+        document.getElementById(
+            "mappingCard"
+        ),
+    mappingSummary:
+        document.getElementById(
+            "mappingSummary"
+        ),
+    mappingTargets:
+        document.getElementById(
+            "mappingTargets"
         ),
     recordsCard:
         document.getElementById(
@@ -123,6 +136,8 @@ function clearCurrentPackage() {
     elements.packageSummary.innerHTML = "";
     elements.integrityChecks.innerHTML = "";
     elements.preflightSummary.innerHTML = "";
+    elements.mappingSummary.innerHTML = "";
+    elements.mappingTargets.innerHTML = "";
     elements.recordsTableBody.innerHTML = "";
 
     hideCard(
@@ -133,6 +148,9 @@ function clearCurrentPackage() {
     );
     hideCard(
         elements.preflightCard
+    );
+    hideCard(
+        elements.mappingCard
     );
     hideCard(
         elements.recordsCard
@@ -428,6 +446,264 @@ function renderPreflight(
     );
 }
 
+
+function renderMappingContract(
+    contract,
+    preflight
+) {
+    if (!contract) {
+        return;
+    }
+
+    elements.mappingSummary.innerHTML =
+        "";
+
+    elements.mappingTargets.innerHTML =
+        "";
+
+    const targetByKey =
+        new Map(
+            contract.targets
+                .map(target => [
+                    target.key,
+                    target
+                ])
+        );
+
+    const steuergeraeteTarget =
+        targetByKey.get(
+            "Steuergeraete"
+        );
+
+    const batchTarget =
+        targetByKey.get(
+            "ImportBatches"
+        );
+
+    const archiveTarget =
+        targetByKey.get(
+            "TrackingImportArchiv"
+        );
+
+    const summaryItems = [
+        [
+            "Mapping-Version",
+            contract.version
+        ],
+        [
+            "Steuergeräte",
+            steuergeraeteTarget
+                ? steuergeraeteTarget
+                    .targetName
+                : "–"
+        ],
+        [
+            "ImportBatches",
+            batchTarget
+                ? batchTarget
+                    .targetName
+                : "–"
+        ],
+        [
+            "Originalarchiv",
+            archiveTarget
+                ? archiveTarget
+                    .targetName
+                : "–"
+        ],
+        [
+            "Geplante neue Items",
+            preflight
+                ? preflight.importCount
+                : 0
+        ]
+    ];
+
+    for (
+        const [label, value] of
+        summaryItems
+    ) {
+        elements.mappingSummary
+            .appendChild(
+                createSummaryItem(
+                    label,
+                    value
+                )
+            );
+    }
+
+    for (
+        const target of
+        contract.targets
+    ) {
+        const details =
+            document.createElement(
+                "details"
+            );
+
+        details.className =
+            "mapping-target";
+
+        const summary =
+            document.createElement(
+                "summary"
+            );
+
+        summary.textContent =
+            `${target.key} → ${target.targetName} · ${target.fields.length} Felder`;
+
+        const content =
+            document.createElement(
+                "div"
+            );
+
+        content.className =
+            "mapping-target-content";
+
+        if (
+            target.fileNameSource
+        ) {
+            const fileInfo =
+                document.createElement(
+                    "p"
+                );
+
+            fileInfo.className =
+                "mapping-source";
+
+            fileInfo.textContent =
+                `Dateiname ← ${target.fileNameSource}`;
+
+            content.appendChild(
+                fileInfo
+            );
+        }
+
+        const tableWrap =
+            document.createElement(
+                "div"
+            );
+
+        tableWrap.className =
+            "table-wrap";
+
+        const table =
+            document.createElement(
+                "table"
+            );
+
+        const thead =
+            document.createElement(
+                "thead"
+            );
+
+        thead.innerHTML =
+            "<tr>" +
+            "<th>SharePoint-Feld</th>" +
+            "<th>Quelle</th>" +
+            "<th>Typ</th>" +
+            "<th>Pflicht</th>" +
+            "</tr>";
+
+        const tbody =
+            document.createElement(
+                "tbody"
+            );
+
+        for (
+            const field of
+            target.fields
+        ) {
+            const row =
+                document.createElement(
+                    "tr"
+                );
+
+            appendCell(
+                row,
+                field.fieldName,
+                true
+            );
+
+            const sourceCell =
+                document.createElement(
+                    "td"
+                );
+
+            sourceCell.className =
+                "mapping-source";
+
+            sourceCell.textContent =
+                field.source;
+
+            row.appendChild(
+                sourceCell
+            );
+
+            appendCell(
+                row,
+                field.type
+            );
+
+            const requiredCell =
+                document.createElement(
+                    "td"
+                );
+
+            requiredCell.className =
+                "mapping-required";
+
+            requiredCell.textContent =
+                field.required
+                    ? "JA"
+                    : "NEIN";
+
+            if (field.required) {
+                requiredCell
+                    .classList.add(
+                        "yes"
+                    );
+            }
+
+            row.appendChild(
+                requiredCell
+            );
+
+            tbody.appendChild(
+                row
+            );
+        }
+
+        table.append(
+            thead,
+            tbody
+        );
+
+        tableWrap.appendChild(
+            table
+        );
+
+        content.appendChild(
+            tableWrap
+        );
+
+        details.append(
+            summary,
+            content
+        );
+
+        elements.mappingTargets
+            .appendChild(
+                details
+            );
+    }
+
+    showCard(
+        elements.mappingCard
+    );
+}
+
+
 function getActionLabel(action) {
     switch (action) {
         case "IMPORT":
@@ -665,6 +941,11 @@ async function processSelectedFile(
             preflight
         );
 
+        renderMappingContract(
+            state.mappingContract,
+            preflight
+        );
+
         renderRecordPreview(
             verifiedPackage,
             preflight
@@ -749,6 +1030,28 @@ function createImportLog(
             PackageHash:
                 verifiedPackage
                     .packageHash
+        },
+        SharePoint: {
+            MappingVersion:
+                batchRecord
+                    .SharePointPlan
+                    .MappingVersion,
+            Targets:
+                batchRecord
+                    .SharePointPlan
+                    .Targets,
+            Batch:
+                batchRecord
+                    .SharePointPlan
+                    .Batch,
+            Archive:
+                batchRecord
+                    .SharePointPlan
+                    .Archive,
+            Records:
+                batchRecord
+                    .SharePointPlan
+                    .Records
         },
         Result: {
             ImportedCount:
@@ -1002,8 +1305,12 @@ async function initialize() {
                     "./import-config.json"
                 );
 
+        state.mappingContract =
+            TeiletrackingImportDestinationService
+                .getMappingContract();
+
         elements.providerBadge.textContent =
-            providerInfo.displayName;
+            `${providerInfo.displayName} · Mapping v${state.mappingContract.version}`;
 
         await refreshBatchHistory();
     }

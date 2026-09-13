@@ -385,3 +385,47 @@ td.mono {
         width: 100%;
     }
 }
+
+.mapping-contract {
+    display: grid;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.mapping-target {
+    border: 1px solid #d8dee4;
+    border-radius: 10px;
+    background: #ffffff;
+    overflow: hidden;
+}
+
+.mapping-target summary {
+    padding: 12px 14px;
+    background: #f6f8fa;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.mapping-target-content {
+    padding: 12px;
+}
+
+.mapping-source {
+    color: #57606a;
+    font-family:
+        "SFMono-Regular",
+        Consolas,
+        monospace;
+    font-size: 0.78rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.mapping-required {
+    font-weight: 800;
+}
+
+.mapping-required.yes {
+    color: #116329;
+}
+

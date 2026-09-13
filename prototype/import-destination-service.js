@@ -4,6 +4,8 @@
     const DEFAULT_CONFIG = Object.freeze({
         Provider:
             "LOCAL_MOCK",
+        MappingConfigUrl:
+            "./sharepoint-import-map.json",
         LocalMock: {
             DatabaseName:
                 "teiletracking.pcImporter.v1",
@@ -58,6 +60,16 @@
                 supplied.Provider
                     .trim()
                     .toUpperCase();
+        }
+
+        if (
+            typeof supplied.MappingConfigUrl ===
+                "string" &&
+            supplied.MappingConfigUrl.trim()
+        ) {
+            result.MappingConfigUrl =
+                supplied.MappingConfigUrl
+                    .trim();
         }
 
         if (
@@ -471,14 +483,12 @@
             async importVerifiedPackage(
                 verifiedPackage,
                 importedBy,
-                preflight
+                preflight,
+                mappingPlan,
+                importedAt
             ) {
                 const database =
                     await openDatabase();
-
-                const importedAt =
-                    new Date()
-                        .toISOString();
 
                 const newRecords =
                     preflight.recordResults
@@ -490,23 +500,51 @@
                             result.record
                         );
 
+                const mappedRecordById =
+                    new Map(
+                        mappingPlan.Records
+                            .map(item => [
+                                item.RecordId,
+                                item
+                            ])
+                    );
+
                 try {
                     for (
                         const record of
                         newRecords
                     ) {
+                        const mapped =
+                            mappedRecordById
+                                .get(
+                                    record.RecordId
+                                );
+
+                        if (!mapped) {
+                            throw new Error(
+                                `SharePoint-Mapping für RecordId '${record.RecordId}' fehlt.`
+                            );
+                        }
+
                         await putOne(
                             database,
                             "records",
                             {
                                 ...record,
-                                ImportedBatchId:
+                                ImportBatchId:
                                     verifiedPackage
                                         .batchId,
                                 ImportedAt:
                                     importedAt,
                                 ImportedBy:
-                                    importedBy
+                                    importedBy,
+                                SharePointTarget:
+                                    mapped.Target,
+                                SharePointValues:
+                                    mapped.Values,
+                                SharePointMappingVersion:
+                                    mappingPlan
+                                        .MappingVersion
                             }
                         );
                     }
@@ -530,7 +568,18 @@
                             Blob:
                                 verifiedPackage.file,
                             ArchivedAt:
-                                importedAt
+                                importedAt,
+                            SharePointTarget:
+                                mappingPlan
+                                    .Archive
+                                    .Target,
+                            SharePointMetadata:
+                                mappingPlan
+                                    .Archive
+                                    .Metadata,
+                            SharePointMappingVersion:
+                                mappingPlan
+                                    .MappingVersion
                         }
                     );
 
@@ -590,12 +639,32 @@
                         FileName:
                             verifiedPackage
                                 .fileName,
+                        ImportStatus:
+                            "IMPORTED",
                         Status:
-                            preflight
-                                .conflictCount >
-                            0
-                                ? "CONFLICT"
-                                : "IMPORTED"
+                            "IMPORTED",
+                        SharePointMappingVersion:
+                            mappingPlan
+                                .MappingVersion,
+                        SharePointTargets:
+                            mappingPlan
+                                .Targets,
+                        SharePointTarget:
+                            mappingPlan
+                                .Batch
+                                .Target,
+                        SharePointValues:
+                            mappingPlan
+                                .Batch
+                                .Values,
+                        ArchiveTarget:
+                            mappingPlan
+                                .Archive
+                                .Target,
+                        ArchiveMetadata:
+                            mappingPlan
+                                .Archive
+                                .Metadata
                     };
 
                     await putOne(
@@ -665,6 +734,21 @@
                 configUrl
             );
 
+        if (
+            !global.TeiletrackingSharePointMappingService
+        ) {
+            throw new Error(
+                "TeiletrackingSharePointMappingService wurde nicht geladen."
+            );
+        }
+
+        await global
+            .TeiletrackingSharePointMappingService
+            .initialize(
+                activeConfig
+                    .MappingConfigUrl
+            );
+
         const provider =
             String(
                 activeConfig.Provider ||
@@ -714,6 +798,38 @@
         return clone(
             activeProvider.info
         );
+    }
+
+    function getTargetNames() {
+        ensureInitialized();
+
+        return {
+            Steuergeraete:
+                activeConfig
+                    .SharePoint
+                    .Lists
+                    .Steuergeraete,
+            ImportBatches:
+                activeConfig
+                    .SharePoint
+                    .Lists
+                    .ImportBatches,
+            TrackingImportArchiv:
+                activeConfig
+                    .SharePoint
+                    .Libraries
+                    .TrackingImportArchiv
+        };
+    }
+
+    function getMappingContract() {
+        ensureInitialized();
+
+        return global
+            .TeiletrackingSharePointMappingService
+            .describeContract(
+                getTargetNames()
+            );
     }
 
     async function preflight(
@@ -913,20 +1029,43 @@
             );
         }
 
-        return (
-            activeProvider
+        const importedAt =
+            new Date()
+                .toISOString();
+
+        const mappingPlan =
+            global
+                .TeiletrackingSharePointMappingService
+                .buildImportPlan(
+                    verifiedPackage,
+                    preflightResult,
+                    normalizedImportedBy,
+                    importedAt,
+                    getTargetNames()
+                );
+
+        const result =
+            await activeProvider
                 .importVerifiedPackage(
                     verifiedPackage,
                     normalizedImportedBy,
-                    preflightResult
-                )
-        );
+                    preflightResult,
+                    mappingPlan,
+                    importedAt
+                );
+
+        return {
+            ...result,
+            SharePointPlan:
+                mappingPlan
+        };
     }
 
     global.TeiletrackingImportDestinationService =
         Object.freeze({
             initialize,
             getProviderInfo,
+            getMappingContract,
             preflight,
             listBatches,
             importVerifiedPackage
