@@ -1,1 +1,13 @@
-{"SiteUrl":"https://TENANT.sharepoint.com/sites/Teiletracking","ClientId":"DEINE-CLIENT-ID","Lists":{"Derivate":"Derivate","IStufen":"IStufen","Steuergeraete":"Steuergeraete"}}
+{
+  "SiteUrl": "https://TENANT.sharepoint.com/sites/Teiletracking",
+  "ClientId": "DEINE-CLIENT-ID",
+  "Lists": {
+    "Derivate": "Derivate",
+    "IStufen": "IStufen",
+    "Steuergeraete": "Steuergeraete",
+    "ImportBatches": "ImportBatches"
+  },
+  "Libraries": {
+    "TrackingImportArchiv": "TrackingImportArchiv"
+  }
+}

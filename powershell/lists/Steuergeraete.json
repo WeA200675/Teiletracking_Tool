@@ -1,10 +1,10 @@
 {
   "Title": "Steuergeraete",
-  "Description": "Zentrale Liste für Teiletracking und Steuergeräte",
+  "Description": "Erfasste Steuergeräte und Teile mit Label-/QR-Vergleich und nachvollziehbarer Importherkunft",
   "Fields": [
     {
       "InternalName": "DeviceKey",
-      "DisplayName": "DeviceKey",
+      "DisplayName": "Device Key",
       "Type": "Text",
       "Required": true
     },
@@ -58,7 +58,7 @@
     },
     {
       "InternalName": "ValidationStatus",
-      "DisplayName": "Prüfstatus",
+      "DisplayName": "Validierungsstatus",
       "Type": "Choice",
       "Required": true,
       "Choices": [
@@ -82,7 +82,7 @@
     },
     {
       "InternalName": "AssignmentKey",
-      "DisplayName": "AssignmentKey",
+      "DisplayName": "Assignment Key",
       "Type": "Text",
       "Required": true
     },
@@ -107,6 +107,73 @@
     {
       "InternalName": "QRSoftware",
       "DisplayName": "QR Software",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "SourceRecordId",
+      "DisplayName": "Source Record ID",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "ImportBatchId",
+      "DisplayName": "Import Batch ID",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "SourceDeviceId",
+      "DisplayName": "Source Device ID",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "SourceOrigin",
+      "DisplayName": "Source Origin",
+      "Type": "Choice",
+      "Required": false,
+      "Choices": [
+        "CAMERA_CAPTURE",
+        "MANUAL_ENTRY",
+        "JSON_IMPORT",
+        "LEGACY_LOCAL",
+        "UNKNOWN"
+      ]
+    },
+    {
+      "InternalName": "CapturedAt",
+      "DisplayName": "Erfasst am",
+      "Type": "DateTime",
+      "Required": false
+    },
+    {
+      "InternalName": "ImportedAt",
+      "DisplayName": "Importiert am",
+      "Type": "DateTime",
+      "Required": false
+    },
+    {
+      "InternalName": "ImportedBy",
+      "DisplayName": "Importiert von",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "RecordHash",
+      "DisplayName": "Record Hash",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "LabelImageFile",
+      "DisplayName": "Labelbild Datei",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "LabelImageHash",
+      "DisplayName": "Labelbild Hash",
       "Type": "Text",
       "Required": false
     }

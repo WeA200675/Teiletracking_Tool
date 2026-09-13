@@ -5,7 +5,8 @@ $TestFiles = @(
     "Test-MasterData.ps1",
     "Test-LocalSharePoint.ps1",
     "Test-LocalDuplicates.ps1",
-    "Test-EndToEndLocal.ps1"
+    "Test-EndToEndLocal.ps1",
+    "Test-MigrationSchema.ps1"
 )
 
 $Passed = 0
@@ -19,7 +20,6 @@ Write-Host "=============================================="
 Write-Host ""
 
 foreach ($TestFile in $TestFiles) {
-
     $TestPath = Join-Path $PSScriptRoot $TestFile
 
     Write-Host "----------------------------------------------"
@@ -28,7 +28,6 @@ foreach ($TestFile in $TestFiles) {
 
     if (-not (Test-Path $TestPath)) {
         Write-Host "FEHLER: Testdatei wurde nicht gefunden: $TestPath"
-
         $Failed++
 
         $Results += [pscustomobject]@{
@@ -42,9 +41,7 @@ foreach ($TestFile in $TestFiles) {
     }
 
     try {
-        & pwsh `
-            -NoProfile `
-            -File $TestPath
+        & pwsh -NoProfile -File $TestPath
 
         if ($LASTEXITCODE -ne 0) {
             throw "Testprozess wurde mit Exit-Code $LASTEXITCODE beendet"
@@ -80,11 +77,6 @@ foreach ($TestFile in $TestFiles) {
     Write-Host ""
 }
 
-
-# ============================================================
-# Zusammenfassung
-# ============================================================
-
 Write-Host ""
 Write-Host "=============================================="
 Write-Host " Testzusammenfassung"
@@ -101,17 +93,6 @@ Write-Host "Bestanden: $Passed"
 Write-Host "Fehlgeschlagen: $Failed"
 Write-Host "Gesamt: $($TestFiles.Count)"
 Write-Host ""
-
-
-# ============================================================
-# Exit-Code
-#
-# 0 = alle Tests bestanden
-# 1 = mindestens ein Test fehlgeschlagen
-#
-# Dadurch kann der Runner später unverändert auch in einer
-# GitHub-Actions-/CI-Pipeline verwendet werden.
-# ============================================================
 
 if ($Failed -gt 0) {
     Write-Host "=============================================="

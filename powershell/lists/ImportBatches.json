@@ -1,0 +1,120 @@
+{
+  "Title": "ImportBatches",
+  "Description": "Nachvollziehbares Protokoll aller geprüften Teiletracking-Migrationspakete",
+  "Fields": [
+    {
+      "InternalName": "BatchId",
+      "DisplayName": "Batch ID",
+      "Type": "Text",
+      "Required": true
+    },
+    {
+      "InternalName": "DeviceId",
+      "DisplayName": "Device ID",
+      "Type": "Text",
+      "Required": true
+    },
+    {
+      "InternalName": "PackageHash",
+      "DisplayName": "Package Hash",
+      "Type": "Text",
+      "Required": true
+    },
+    {
+      "InternalName": "CreatedAt",
+      "DisplayName": "Paket erstellt am",
+      "Type": "DateTime",
+      "Required": true
+    },
+    {
+      "InternalName": "ImportedAt",
+      "DisplayName": "Importiert am",
+      "Type": "DateTime",
+      "Required": true
+    },
+    {
+      "InternalName": "ImportedBy",
+      "DisplayName": "Importiert von",
+      "Type": "Text",
+      "Required": true
+    },
+    {
+      "InternalName": "AppVersion",
+      "DisplayName": "App-Version",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "SchemaVersion",
+      "DisplayName": "Schema-Version",
+      "Type": "Number",
+      "Required": true
+    },
+    {
+      "InternalName": "PackageFormatVersion",
+      "DisplayName": "Paketformat-Version",
+      "Type": "Number",
+      "Required": true
+    },
+    {
+      "InternalName": "RecordCount",
+      "DisplayName": "Datensätze im Paket",
+      "Type": "Number",
+      "Required": true
+    },
+    {
+      "InternalName": "ImportedCount",
+      "DisplayName": "Importierte Datensätze",
+      "Type": "Number",
+      "Required": true
+    },
+    {
+      "InternalName": "SkippedDuplicateCount",
+      "DisplayName": "Übersprungene Dubletten",
+      "Type": "Number",
+      "Required": true
+    },
+    {
+      "InternalName": "ConflictCount",
+      "DisplayName": "Konflikte",
+      "Type": "Number",
+      "Required": true
+    },
+    {
+      "InternalName": "ImageCount",
+      "DisplayName": "Labelbilder",
+      "Type": "Number",
+      "Required": true
+    },
+    {
+      "InternalName": "FileName",
+      "DisplayName": "Archivdatei",
+      "Type": "Text",
+      "Required": true
+    },
+    {
+      "InternalName": "ImportStatus",
+      "DisplayName": "Importstatus",
+      "Type": "Choice",
+      "Required": true,
+      "Choices": [
+        "IMPORTED",
+        "REJECTED",
+        "CONFLICT",
+        "ERROR"
+      ]
+    },
+    {
+      "InternalName": "TrackingDataHash",
+      "DisplayName": "Tracking Data Hash",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "Kommentar",
+      "DisplayName": "Kommentar",
+      "Type": "Note",
+      "Required": false
+    }
+  ]
+}

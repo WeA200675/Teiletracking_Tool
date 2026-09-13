@@ -1,0 +1,14 @@
+{
+  "Library": "TrackingImportArchiv",
+  "Indexes": [
+    "BatchId",
+    "DeviceId",
+    "PackageHash",
+    "ImportedAt",
+    "ImportStatus"
+  ],
+  "Unique": [
+    "BatchId",
+    "PackageHash"
+  ]
+}

@@ -1,1 +1,21 @@
-{"List":"Steuergeraete","Indexes":["DeviceKey","AssignmentKey","Derivat","IStufe","PartNumber","SerialNumber","ValidationStatus"],"Unique":["AssignmentKey"]}
+{
+  "List": "Steuergeraete",
+  "Indexes": [
+    "DeviceKey",
+    "AssignmentKey",
+    "Derivat",
+    "IStufe",
+    "PartNumber",
+    "SerialNumber",
+    "ValidationStatus",
+    "SourceRecordId",
+    "ImportBatchId",
+    "SourceDeviceId",
+    "CapturedAt",
+    "RecordHash"
+  ],
+  "Unique": [
+    "AssignmentKey",
+    "SourceRecordId"
+  ]
+}

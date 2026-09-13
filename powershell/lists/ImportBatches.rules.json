@@ -1,0 +1,15 @@
+{
+  "List": "ImportBatches",
+  "Indexes": [
+    "BatchId",
+    "DeviceId",
+    "PackageHash",
+    "CreatedAt",
+    "ImportedAt",
+    "ImportStatus"
+  ],
+  "Unique": [
+    "BatchId",
+    "PackageHash"
+  ]
+}
