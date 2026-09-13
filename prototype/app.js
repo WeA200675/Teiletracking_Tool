@@ -4,6 +4,69 @@ const MASTER_DATA_STORAGE_KEY = "teiletracking.masterData.v2";
 const LEGACY_MASTER_DATA_STORAGE_KEY = "teiletracking.masterData.v1";
 const TRACKING_STORAGE_KEY = "teiletracking.tracking.v1";
 
+const DEFAULT_OCR_CONFIG = {
+    ProfileName: "Standard-Label",
+    Version: 1,
+    Fields: {
+        PartNumber: {
+            Aliases: [
+                "PN",
+                "P/N",
+                "PART NO",
+                "PART NO.",
+                "PART NUMBER",
+                "PARTNUMBER",
+                "PART NR",
+                "PART NR.",
+                "TEILENUMMER",
+                "TEILE NR",
+                "TEILE NR."
+            ],
+            Required: true
+        },
+        SerialNumber: {
+            Aliases: [
+                "SN",
+                "S/N",
+                "SERIAL",
+                "SERIAL NO",
+                "SERIAL NO.",
+                "SERIAL NUMBER",
+                "SERIALNUMBER",
+                "SERIENNUMMER",
+                "SERIEN NR",
+                "SERIEN NR."
+            ],
+            Required: true
+        },
+        Hardware: {
+            Aliases: [
+                "HW",
+                "H/W",
+                "HARDWARE",
+                "HARDWARE VERSION",
+                "HW VERSION"
+            ],
+            Required: false
+        },
+        Software: {
+            Aliases: [
+                "SW",
+                "S/W",
+                "SOFTWARE",
+                "SOFTWARE VERSION",
+                "SW VERSION"
+            ],
+            Required: false
+        }
+    },
+    Parsing: {
+        AllowValueOnNextLine: true,
+        ValuePattern:
+            "[A-Z0-9][A-Z0-9._/\\-]*"
+    }
+};
+
 const state = {
     masterData: null,
     baseMasterData: null,
@@ -21,7 +84,9 @@ const state = {
     capturedLabelImageDataUrl: null,
     labelOcrWorker: null,
     labelOcrWorkerPromise: null,
-    labelOcrBusy: false
+    labelOcrBusy: false,
+    ocrConfig: JSON.parse(JSON.stringify(DEFAULT_OCR_CONFIG)),
+    ocrConfigSource: "DEFAULT"
 };
 
 const elements = {
@@ -1788,6 +1853,282 @@ async function getLabelOcrWorker() {
     }
 }
 
+function cloneDefaultOcrConfig() {
+    return JSON.parse(
+        JSON.stringify(
+            DEFAULT_OCR_CONFIG
+        )
+    );
+}
+
+function normalizeOcrAliases(
+    value,
+    fallback
+) {
+    if (!Array.isArray(value)) {
+        return [...fallback];
+    }
+
+    const aliases =
+        value
+            .map(item =>
+                String(item || "").trim()
+            )
+            .filter(Boolean);
+
+    return aliases.length > 0
+        ? aliases
+        : [...fallback];
+}
+
+function normalizeOcrConfig(rawConfig) {
+    const fallback =
+        cloneDefaultOcrConfig();
+
+    if (
+        !rawConfig ||
+        typeof rawConfig !== "object"
+    ) {
+        return fallback;
+    }
+
+    const config =
+        cloneDefaultOcrConfig();
+
+    if (
+        typeof rawConfig.ProfileName ===
+        "string" &&
+        rawConfig.ProfileName.trim()
+    ) {
+        config.ProfileName =
+            rawConfig.ProfileName.trim();
+    }
+
+    if (
+        Number.isFinite(
+            Number(rawConfig.Version)
+        )
+    ) {
+        config.Version =
+            Number(rawConfig.Version);
+    }
+
+    for (
+        const fieldName of [
+            "PartNumber",
+            "SerialNumber",
+            "Hardware",
+            "Software"
+        ]
+    ) {
+        const sourceField =
+            rawConfig.Fields &&
+            rawConfig.Fields[fieldName];
+
+        const fallbackField =
+            fallback.Fields[fieldName];
+
+        if (
+            sourceField &&
+            typeof sourceField === "object"
+        ) {
+            config.Fields[fieldName].Aliases =
+                normalizeOcrAliases(
+                    sourceField.Aliases,
+                    fallbackField.Aliases
+                );
+
+            if (
+                typeof sourceField.Required ===
+                "boolean"
+            ) {
+                config.Fields[fieldName].Required =
+                    sourceField.Required;
+            }
+        }
+    }
+
+    const parsing =
+        rawConfig.Parsing;
+
+    if (
+        parsing &&
+        typeof parsing === "object"
+    ) {
+        if (
+            typeof parsing.AllowValueOnNextLine ===
+            "boolean"
+        ) {
+            config.Parsing.AllowValueOnNextLine =
+                parsing.AllowValueOnNextLine;
+        }
+
+        if (
+            typeof parsing.ValuePattern ===
+            "string" &&
+            parsing.ValuePattern.trim()
+        ) {
+            try {
+                new RegExp(
+                    parsing.ValuePattern,
+                    "i"
+                );
+
+                config.Parsing.ValuePattern =
+                    parsing.ValuePattern;
+            }
+            catch (error) {
+                console.warn(
+                    "Ungültiges OCR-ValuePattern in ocr-config.json. Standardwert wird verwendet.",
+                    error
+                );
+            }
+        }
+    }
+
+    return config;
+}
+
+async function loadOcrConfig() {
+    state.ocrConfig =
+        cloneDefaultOcrConfig();
+
+    state.ocrConfigSource =
+        "DEFAULT";
+
+    try {
+        const response =
+            await fetch(
+                "./ocr-config.json",
+                {
+                    cache: "no-store"
+                }
+            );
+
+        if (!response.ok) {
+            throw new Error(
+                `HTTP ${response.status}`
+            );
+        }
+
+        const rawConfig =
+            await response.json();
+
+        state.ocrConfig =
+            normalizeOcrConfig(
+                rawConfig
+            );
+
+        state.ocrConfigSource =
+            "FILE";
+
+        console.info(
+            `OCR-Mapping geladen: ${state.ocrConfig.ProfileName} (Version ${state.ocrConfig.Version})`
+        );
+    }
+    catch (error) {
+        console.warn(
+            "ocr-config.json konnte nicht geladen werden. Das eingebaute Standard-Mapping wird verwendet.",
+            error
+        );
+    }
+}
+
+function getOcrProfileName() {
+    return String(
+        state.ocrConfig &&
+        state.ocrConfig.ProfileName
+            ? state.ocrConfig.ProfileName
+            : "Standard-Label"
+    );
+}
+
+function getOcrFieldAliases(
+    fieldName
+) {
+    const field =
+        state.ocrConfig &&
+        state.ocrConfig.Fields &&
+        state.ocrConfig.Fields[fieldName];
+
+    if (
+        field &&
+        Array.isArray(field.Aliases) &&
+        field.Aliases.length > 0
+    ) {
+        return field.Aliases;
+    }
+
+    return (
+        DEFAULT_OCR_CONFIG
+            .Fields[fieldName]
+            .Aliases
+    );
+}
+
+function escapeRegex(value) {
+    return String(value || "")
+        .replace(
+            /[.*+?^${}()|[\]\\]/g,
+            "\\$&"
+        );
+}
+
+function createOcrAliasPattern(
+    alias
+) {
+    const normalized =
+        String(alias || "")
+            .trim();
+
+    if (!normalized) {
+        return "";
+    }
+
+    let pattern = "";
+
+    for (const character of normalized) {
+        if (/\s/.test(character)) {
+            pattern += "\\s*";
+            continue;
+        }
+
+        if (character === "/") {
+            pattern += "\\s*/\\s*";
+            continue;
+        }
+
+        pattern +=
+            escapeRegex(character);
+    }
+
+    return pattern.replace(
+        /(?:\\s\*){2,}/g,
+        "\\s*"
+    );
+}
+
+function getOcrValuePattern() {
+    const configuredPattern =
+        state.ocrConfig &&
+        state.ocrConfig.Parsing &&
+        state.ocrConfig.Parsing.ValuePattern;
+
+    if (
+        typeof configuredPattern ===
+        "string" &&
+        configuredPattern.trim()
+    ) {
+        return configuredPattern;
+    }
+
+    return (
+        DEFAULT_OCR_CONFIG
+            .Parsing
+            .ValuePattern
+    );
+}
+
 function normalizeOcrLine(value) {
     return String(value || "")
         .replace(/\u00A0/g, " ")
@@ -1808,32 +2149,100 @@ function findOcrFieldValue(
     lines,
     aliases
 ) {
-    const aliasPattern =
-        aliases.join("|");
+    const aliasPatterns =
+        aliases
+            .map(createOcrAliasPattern)
+            .filter(Boolean);
 
-    const regex =
+    if (aliasPatterns.length === 0) {
+        return "";
+    }
+
+    const aliasPattern =
+        aliasPatterns.join("|");
+
+    const valuePattern =
+        getOcrValuePattern();
+
+    const sameLineRegex =
         new RegExp(
-            `(?:^|\\s)(?:${aliasPattern})\\s*(?:[:=\\-]|\\s)\\s*([A-Z0-9][A-Z0-9._/\\-]*)`,
+            `(?:^|\\s)(?:${aliasPattern})\\s*(?::|=|\\-)?\\s*(${valuePattern})`,
             "i"
         );
 
-    for (const line of lines) {
-        const match =
-            normalizeOcrLine(line)
-                .match(regex);
+    const aliasOnlyRegex =
+        new RegExp(
+            `^\\s*(?:${aliasPattern})\\s*(?::|=|\\-)?\\s*$`,
+            "i"
+        );
+
+    const nextLineValueRegex =
+        new RegExp(
+            `^\\s*(${valuePattern})`,
+            "i"
+        );
+
+    for (
+        let index = 0;
+        index < lines.length;
+        index += 1
+    ) {
+        const line =
+            normalizeOcrLine(
+                lines[index]
+            );
+
+        const sameLineMatch =
+            line.match(
+                sameLineRegex
+            );
 
         if (
-            match &&
-            match[1]
+            sameLineMatch &&
+            sameLineMatch[1]
         ) {
             return cleanOcrFieldValue(
-                match[1]
+                sameLineMatch[1]
             );
+        }
+
+        const allowNextLine =
+            Boolean(
+                state.ocrConfig &&
+                state.ocrConfig.Parsing &&
+                state.ocrConfig.Parsing
+                    .AllowValueOnNextLine
+            );
+
+        if (
+            allowNextLine &&
+            aliasOnlyRegex.test(line) &&
+            index + 1 < lines.length
+        ) {
+            const nextLine =
+                normalizeOcrLine(
+                    lines[index + 1]
+                );
+
+            const nextLineMatch =
+                nextLine.match(
+                    nextLineValueRegex
+                );
+
+            if (
+                nextLineMatch &&
+                nextLineMatch[1]
+            ) {
+                return cleanOcrFieldValue(
+                    nextLineMatch[1]
+                );
+            }
         }
     }
 
     return "";
 }
+
 
 function extractTrackingDataFromOcrText(
     rawText
@@ -1858,53 +2267,33 @@ function extractTrackingDataFromOcrText(
     const partNumber =
         findOcrFieldValue(
             combinedLines,
-            [
-                "PN",
-                "P\\s*\\/\\s*N",
-                "PART\\s*NO\\.?",
-                "PART\\s*NUMBER",
-                "PARTNUMBER",
-                "PART\\s*NR\\.?",
-                "TEILENUMMER",
-                "TEILE?\\s*NR\\.?"
-            ]
+            getOcrFieldAliases(
+                "PartNumber"
+            )
         );
 
     const serialNumber =
         findOcrFieldValue(
             combinedLines,
-            [
-                "SN",
-                "S\\s*\\/\\s*N",
-                "SERIAL\\s*NO\\.?",
-                "SERIAL\\s*NUMBER",
-                "SERIALNUMBER",
-                "SERIAL",
-                "SERIENNUMMER",
-                "SERIEN\\s*NR\\.?"
-            ]
+            getOcrFieldAliases(
+                "SerialNumber"
+            )
         );
 
     const hardware =
         findOcrFieldValue(
             combinedLines,
-            [
-                "HW",
-                "HARDWARE",
-                "HARDWARE\\s*VERSION",
-                "HW\\s*VERSION"
-            ]
+            getOcrFieldAliases(
+                "Hardware"
+            )
         );
 
     const software =
         findOcrFieldValue(
             combinedLines,
-            [
-                "SW",
-                "SOFTWARE",
-                "SOFTWARE\\s*VERSION",
-                "SW\\s*VERSION"
-            ]
+            getOcrFieldAliases(
+                "Software"
+            )
         );
 
     return {
@@ -1914,6 +2303,7 @@ function extractTrackingDataFromOcrText(
         software
     };
 }
+
 
 function buildTrackingStringFromOcrData(
     data
@@ -2317,7 +2707,7 @@ async function recognizeVisibleLabelText(
     );
 
     setLabelOcrStatus(
-        "OCR wird vorbereitet …"
+        `OCR wird vorbereitet · Mapping: ${getOcrProfileName()} …`
     );
 
     state.labelOcrBusy = true;
@@ -2409,7 +2799,7 @@ async function recognizeVisibleLabelText(
         );
 
         setLabelOcrStatus(
-            "OCR abgeschlossen. Bitte die erkannten Werte kontrollieren und anschließend „OCR-Werte übernehmen & vergleichen“ verwenden.",
+            `OCR abgeschlossen · Mapping: ${getOcrProfileName()}. Bitte die erkannten Werte kontrollieren und anschließend „OCR-Werte übernehmen & vergleichen“ verwenden.`,
             "success"
         );
 
@@ -3982,6 +4372,8 @@ function resetForm() {
 
 async function loadData() {
     try {
+        await loadOcrConfig();
+
         const [
             masterResponse,
             trackingResponse

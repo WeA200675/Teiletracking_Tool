@@ -1,0 +1,61 @@
+{
+  "ProfileName": "Standard-Label",
+  "Version": 1,
+  "Fields": {
+    "PartNumber": {
+      "Aliases": [
+        "PN",
+        "P/N",
+        "PART NO",
+        "PART NO.",
+        "PART NUMBER",
+        "PARTNUMBER",
+        "PART NR",
+        "PART NR.",
+        "TEILENUMMER",
+        "TEILE NR",
+        "TEILE NR."
+      ],
+      "Required": true
+    },
+    "SerialNumber": {
+      "Aliases": [
+        "SN",
+        "S/N",
+        "SERIAL",
+        "SERIAL NO",
+        "SERIAL NO.",
+        "SERIAL NUMBER",
+        "SERIALNUMBER",
+        "SERIENNUMMER",
+        "SERIEN NR",
+        "SERIEN NR."
+      ],
+      "Required": true
+    },
+    "Hardware": {
+      "Aliases": [
+        "HW",
+        "H/W",
+        "HARDWARE",
+        "HARDWARE VERSION",
+        "HW VERSION"
+      ],
+      "Required": false
+    },
+    "Software": {
+      "Aliases": [
+        "SW",
+        "S/W",
+        "SOFTWARE",
+        "SOFTWARE VERSION",
+        "SW VERSION"
+      ],
+      "Required": false
+    }
+  },
+  "Parsing": {
+    "AllowValueOnNextLine": true,
+    "ValuePattern": "[A-Z0-9][A-Z0-9._/\\-]*"
+  }
+}
