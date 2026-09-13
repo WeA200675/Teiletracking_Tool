@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1"
+    >
+    <title>Teiletracking – PC-Importer</title>
+    <link
+        rel="stylesheet"
+        href="./importer.css"
+    >
+</head>
+
+<body>
+    <main class="importer-shell">
+        <header class="importer-header">
+            <div>
+                <p class="eyebrow">Teiletracking</p>
+                <h1>PC-Importer für Migrationspakete</h1>
+                <p class="muted">
+                    Paket prüfen → Hashes validieren → Dubletten/ Konflikte prüfen →
+                    Import protokollieren und Originalpaket archivieren.
+                </p>
+            </div>
+
+            <span
+                id="providerBadge"
+                class="provider-badge"
+            >
+                Provider wird geladen …
+            </span>
+        </header>
+
+        <section class="card">
+            <h2>1. Migrationspaket auswählen</h2>
+
+            <div class="upload-row">
+                <label class="button button-primary file-picker">
+                    ZIP auswählen
+                    <input
+                        id="packageFileInput"
+                        type="file"
+                        accept=".zip,application/zip"
+                    >
+                </label>
+
+                <span
+                    id="selectedFileName"
+                    class="file-name"
+                >
+                    Keine Datei ausgewählt
+                </span>
+            </div>
+
+            <div
+                id="mainMessage"
+                class="message info hidden"
+                aria-live="polite"
+            ></div>
+        </section>
+
+        <section
+            id="packageSummaryCard"
+            class="card hidden"
+        >
+            <h2>2. Paketübersicht</h2>
+
+            <div
+                id="packageSummary"
+                class="summary-grid"
+            ></div>
+        </section>
+
+        <section
+            id="integrityCard"
+            class="card hidden"
+        >
+            <h2>3. Integritätsprüfung</h2>
+
+            <div
+                id="integrityChecks"
+                class="check-list"
+            ></div>
+        </section>
+
+        <section
+            id="preflightCard"
+            class="card hidden"
+        >
+            <h2>4. Import-Vorprüfung</h2>
+
+            <div
+                id="preflightBanner"
+                class="preflight-banner"
+            ></div>
+
+            <div
+                id="preflightSummary"
+                class="summary-grid"
+            ></div>
+        </section>
+
+        <section
+            id="recordsCard"
+            class="card hidden"
+        >
+            <h2>5. Datensatzvorschau</h2>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Aktion</th>
+                            <th>RecordId</th>
+                            <th>PN</th>
+                            <th>SN</th>
+                            <th>Derivat</th>
+                            <th>I-Stufe</th>
+                            <th>Status</th>
+                            <th>Quelle</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="recordsTableBody"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section
+            id="importCard"
+            class="card hidden"
+        >
+            <h2>6. Kontrollierter Import</h2>
+
+            <div class="import-meta-row">
+                <label class="input-field">
+                    <span>Importiert von / Kennung</span>
+                    <input
+                        id="importedByInput"
+                        type="text"
+                        autocomplete="off"
+                        placeholder="z. B. MA12345"
+                    >
+                </label>
+
+                <button
+                    id="executeImportButton"
+                    class="button button-primary"
+                    type="button"
+                    disabled
+                >
+                    Paket importieren
+                </button>
+
+                <button
+                    id="downloadImportLogButton"
+                    class="button button-secondary hidden"
+                    type="button"
+                >
+                    Importprotokoll herunterladen
+                </button>
+            </div>
+
+            <div
+                id="importResultMessage"
+                class="message success hidden"
+                aria-live="polite"
+            ></div>
+        </section>
+
+        <section class="card">
+            <h2>Lokales Importprotokoll</h2>
+
+            <p class="muted">
+                Diese Liste simuliert später die SharePoint-Liste
+                <strong>ImportBatches</strong>. Das Original-ZIP wird im lokalen
+                Testimport zusätzlich unverändert in IndexedDB archiviert.
+            </p>
+
+            <div
+                id="batchHistory"
+                class="history-empty"
+            >
+                Noch keine Batches importiert.
+            </div>
+        </section>
+    </main>
+
+    <script
+        src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"
+    ></script>
+    <script src="./migration-import-service.js"></script>
+    <script src="./import-destination-service.js"></script>
+    <script src="./importer.js"></script>
+</body>
+</html>

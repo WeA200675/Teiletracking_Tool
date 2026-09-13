@@ -1,0 +1,387 @@
+* {
+    box-sizing: border-box;
+}
+
+:root {
+    font-family:
+        Inter,
+        "Segoe UI",
+        Arial,
+        sans-serif;
+    color: #1f2328;
+    background: #f5f6f8;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    background: #f5f6f8;
+}
+
+button,
+input {
+    font: inherit;
+}
+
+button {
+    cursor: pointer;
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.importer-shell {
+    width: min(1320px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 28px 0 48px;
+}
+
+.importer-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 22px;
+}
+
+.importer-header h1 {
+    margin: 4px 0 8px;
+    font-size: clamp(1.6rem, 3vw, 2.4rem);
+}
+
+.eyebrow {
+    margin: 0;
+    color: #57606a;
+    font-size: 0.76rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.muted {
+    color: #66707a;
+}
+
+.provider-badge {
+    padding: 8px 12px;
+    border: 1px solid #d0d7de;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #44505c;
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+
+.card {
+    margin-bottom: 18px;
+    padding: 20px;
+    border: 1px solid #d8dee4;
+    border-radius: 14px;
+    background: #ffffff;
+    box-shadow: 0 3px 14px rgb(31 35 40 / 6%);
+}
+
+.card h2 {
+    margin: 0 0 14px;
+}
+
+.upload-row,
+.action-row,
+.import-meta-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.file-picker {
+    position: relative;
+    overflow: hidden;
+}
+
+.file-picker input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    padding: 9px 14px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-weight: 800;
+}
+
+.button-primary {
+    background: #0969da;
+    color: #ffffff;
+}
+
+.button-secondary {
+    border-color: #afb8c1;
+    background: #ffffff;
+    color: #24292f;
+}
+
+.file-name {
+    min-width: 0;
+    color: #57606a;
+    overflow-wrap: anywhere;
+}
+
+.message {
+    margin-top: 14px;
+    padding: 11px 13px;
+    border-radius: 8px;
+    font-weight: 700;
+}
+
+.message.hidden,
+.hidden {
+    display: none !important;
+}
+
+.message.info {
+    background: #ddf4ff;
+    color: #0969da;
+}
+
+.message.success {
+    background: #dafbe1;
+    color: #116329;
+}
+
+.message.warning {
+    background: #fff8c5;
+    color: #7d4e00;
+}
+
+.message.error {
+    background: #ffebe9;
+    color: #cf222e;
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns:
+        repeat(4, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.summary-item {
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid #d8dee4;
+    border-radius: 9px;
+    background: #f6f8fa;
+}
+
+.summary-item span {
+    display: block;
+    margin-bottom: 4px;
+    color: #66707a;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.summary-item strong {
+    display: block;
+    overflow-wrap: anywhere;
+    font-family:
+        "SFMono-Regular",
+        Consolas,
+        monospace;
+}
+
+.check-list {
+    display: grid;
+    gap: 8px;
+}
+
+.check-item {
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 10px;
+    padding: 11px;
+    border: 1px solid #d8dee4;
+    border-radius: 9px;
+}
+
+.check-item.ok {
+    border-color: #2da44e;
+    background: #f0fff4;
+}
+
+.check-item.fail {
+    border-color: #cf222e;
+    background: #fff5f5;
+}
+
+.check-icon {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 1px;
+    font-weight: 900;
+}
+
+.check-title {
+    margin-bottom: 3px;
+    font-weight: 800;
+}
+
+.check-detail {
+    color: #57606a;
+    font-size: 0.86rem;
+    overflow-wrap: anywhere;
+}
+
+.preflight-banner {
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    border-radius: 9px;
+    font-weight: 800;
+}
+
+.preflight-banner.ready {
+    background: #dafbe1;
+    color: #116329;
+}
+
+.preflight-banner.warning {
+    background: #fff8c5;
+    color: #7d4e00;
+}
+
+.preflight-banner.error {
+    background: #ffebe9;
+    color: #cf222e;
+}
+
+.table-wrap {
+    overflow-x: auto;
+    border: 1px solid #d8dee4;
+    border-radius: 10px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #ffffff;
+}
+
+th,
+td {
+    padding: 9px 10px;
+    border-bottom: 1px solid #d8dee4;
+    text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
+}
+
+th {
+    background: #f6f8fa;
+    color: #57606a;
+    font-size: 0.74rem;
+    text-transform: uppercase;
+}
+
+td.mono {
+    font-family:
+        "SFMono-Regular",
+        Consolas,
+        monospace;
+}
+
+.status-pill {
+    display: inline-flex;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 0.74rem;
+    font-weight: 900;
+}
+
+.status-pill.import {
+    background: #dafbe1;
+    color: #116329;
+}
+
+.status-pill.skip {
+    background: #fff8c5;
+    color: #7d4e00;
+}
+
+.status-pill.conflict {
+    background: #ffebe9;
+    color: #cf222e;
+}
+
+.input-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: min(360px, 100%);
+}
+
+.input-field span {
+    color: #57606a;
+    font-size: 0.76rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.input-field input {
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 10px;
+    border: 1px solid #afb8c1;
+    border-radius: 8px;
+}
+
+.history-empty {
+    color: #66707a;
+}
+
+@media (max-width: 900px) {
+    .summary-grid {
+        grid-template-columns:
+            repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    .importer-shell {
+        width: min(100% - 20px, 1320px);
+        padding-top: 16px;
+    }
+
+    .importer-header {
+        flex-direction: column;
+    }
+
+    .summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .upload-row,
+    .action-row,
+    .import-meta-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .button,
+    .input-field {
+        width: 100%;
+    }
+}

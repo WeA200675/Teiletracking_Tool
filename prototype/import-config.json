@@ -1,0 +1,16 @@
+{
+  "Provider": "LOCAL_MOCK",
+  "LocalMock": {
+    "DatabaseName": "teiletracking.pcImporter.v1",
+    "DatabaseVersion": 1
+  },
+  "SharePoint": {
+    "Lists": {
+      "ImportBatches": "ImportBatches",
+      "Steuergeraete": "Steuergeraete"
+    },
+    "Libraries": {
+      "TrackingImportArchiv": "TrackingImportArchiv"
+    }
+  }
+}
