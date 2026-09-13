@@ -1,9 +1,5 @@
 "use strict";
 
-const MASTER_DATA_STORAGE_KEY = "teiletracking.masterData.v2";
-const LEGACY_MASTER_DATA_STORAGE_KEY = "teiletracking.masterData.v1";
-const TRACKING_STORAGE_KEY = "teiletracking.tracking.v1";
-
 const state = {
     masterData: null,
     baseMasterData: null,
@@ -585,107 +581,53 @@ function createEmptyLocalMasterData() {
     };
 }
 
-function getLocalMasterData() {
+function normalizeLocalMasterData(
+    parsed
+) {
     const empty =
         createEmptyLocalMasterData();
 
-    const parsed =
-        TeiletrackingDataService.readJson(
-            MASTER_DATA_STORAGE_KEY,
-            null
-        );
-
     if (
-        parsed &&
-        typeof parsed === "object"
-    ) {
-        return {
-            Derivate:
-                Array.isArray(parsed.Derivate)
-                    ? parsed.Derivate
-                    : [],
-            IStufen:
-                Array.isArray(parsed.IStufen)
-                    ? parsed.IStufen
-                    : [],
-            AktivOverrides: {
-                Derivate:
-                    parsed.AktivOverrides?.Derivate &&
-                    typeof parsed.AktivOverrides.Derivate === "object"
-                        ? parsed.AktivOverrides.Derivate
-                        : {},
-                IStufen:
-                    parsed.AktivOverrides?.IStufen &&
-                    typeof parsed.AktivOverrides.IStufen === "object"
-                        ? parsed.AktivOverrides.IStufen
-                        : {}
-            }
-        };
-    }
-
-    const legacy =
-        TeiletrackingDataService.readJson(
-            LEGACY_MASTER_DATA_STORAGE_KEY,
-            null
-        );
-
-    if (
-        !legacy ||
-        typeof legacy !== "object"
+        !parsed ||
+        typeof parsed !== "object"
     ) {
         return empty;
     }
 
-    const migrated = {
+    return {
         Derivate:
-            Array.isArray(legacy.Derivate)
-                ? legacy.Derivate
+            Array.isArray(
+                parsed.Derivate
+            )
+                ? parsed.Derivate
                 : [],
         IStufen:
-            Array.isArray(legacy.IStufen)
-                ? legacy.IStufen
+            Array.isArray(
+                parsed.IStufen
+            )
+                ? parsed.IStufen
                 : [],
         AktivOverrides: {
-            Derivate: {},
-            IStufen: {}
+            Derivate:
+                parsed.AktivOverrides &&
+                parsed.AktivOverrides.Derivate &&
+                typeof parsed.AktivOverrides.Derivate ===
+                    "object"
+                    ? parsed
+                        .AktivOverrides
+                        .Derivate
+                    : {},
+            IStufen:
+                parsed.AktivOverrides &&
+                parsed.AktivOverrides.IStufen &&
+                typeof parsed.AktivOverrides.IStufen ===
+                    "object"
+                    ? parsed
+                        .AktivOverrides
+                        .IStufen
+                    : {}
         }
     };
-
-    TeiletrackingDataService.writeJson(
-        MASTER_DATA_STORAGE_KEY,
-        migrated
-    );
-
-    return migrated;
-}
-
-function saveLocalMasterData() {
-    TeiletrackingDataService.writeJson(
-        MASTER_DATA_STORAGE_KEY,
-        state.localMasterData
-    );
-}
-
-function getLocalTrackingData() {
-    const parsed =
-        TeiletrackingDataService.readJson(
-            TRACKING_STORAGE_KEY,
-            []
-        );
-
-    if (!Array.isArray(parsed)) {
-        return [];
-    }
-
-    return parsed
-        .filter(
-            item =>
-                item &&
-                typeof item === "object"
-        )
-        .map(
-            normalizeStoredTrackingRecord
-        );
 }
 
 function normalizeStoredTrackingRecord(item) {
@@ -752,11 +694,18 @@ function normalizeStoredTrackingRecord(item) {
     };
 }
 
-function saveLocalTrackingData() {
-    TeiletrackingDataService.writeJson(
-        TRACKING_STORAGE_KEY,
-        state.savedItems
-    );
+async function saveMasterData() {
+    await TeiletrackingDataService
+        .saveMasterData(
+            state.localMasterData
+        );
+}
+
+async function saveTrackingData() {
+    await TeiletrackingDataService
+        .saveTrackingData(
+            state.savedItems
+        );
 }
 
 function createLocalRecordId() {
@@ -1099,11 +1048,16 @@ function updateDataStatus() {
             item => item.Aktiv !== false
         ).length;
 
+    const providerInfo =
+        TeiletrackingDataService
+            .getProviderInfo();
+
     elements.dataStatus.textContent =
+        `${providerInfo.displayName} · ` +
         `${activeDerivate} aktive Derivate · ` +
         `${activeIStufen} aktive I-Stufen · ` +
         `${state.initialTrackingData.length} Basis-Teile · ` +
-        `${state.savedItems.length} lokal gespeichert`;
+        `${state.savedItems.length} gespeichert`;
 }
 
 function showMasterDataMessage(message, type) {
@@ -1137,7 +1091,7 @@ function findMasterDataItem(type, valueField, code) {
     );
 }
 
-function toggleMasterDataStatus(type, valueField, code) {
+async function toggleMasterDataStatus(type, valueField, code) {
     const item = findMasterDataItem(
         type,
         valueField,
@@ -1158,7 +1112,7 @@ function toggleMasterDataStatus(type, valueField, code) {
         .AktivOverrides[type][normalizeText(code)] =
         newStatus;
 
-    saveLocalMasterData();
+    await saveMasterData();
     rebuildMasterData();
     refreshMasterDataUi();
 
@@ -1169,7 +1123,7 @@ function toggleMasterDataStatus(type, valueField, code) {
     );
 }
 
-function deleteLocalMasterDataItem(
+async function deleteLocalMasterDataItem(
     type,
     valueField,
     code
@@ -1200,7 +1154,7 @@ function deleteLocalMasterDataItem(
     delete state.localMasterData
         .AktivOverrides[type][normalizedCode];
 
-    saveLocalMasterData();
+    await saveMasterData();
     rebuildMasterData();
     refreshMasterDataUi();
 
@@ -1210,7 +1164,7 @@ function deleteLocalMasterDataItem(
     );
 }
 
-function addDerivat() {
+async function addDerivat() {
     const code = normalizeText(
         elements.newDerivatCode.value
     );
@@ -1251,7 +1205,7 @@ function addDerivat() {
         Aktiv: true
     });
 
-    saveLocalMasterData();
+    await saveMasterData();
     rebuildMasterData();
     refreshMasterDataUi(code, null);
 
@@ -1264,7 +1218,7 @@ function addDerivat() {
     );
 }
 
-function addIStufe() {
+async function addIStufe() {
     const code = normalizeText(
         elements.newIStufeCode.value
     );
@@ -1305,7 +1259,7 @@ function addIStufe() {
         Aktiv: true
     });
 
-    saveLocalMasterData();
+    await saveMasterData();
     rebuildMasterData();
     refreshMasterDataUi(null, code);
 
@@ -2560,7 +2514,7 @@ function validateImportedRecord(record, index) {
     return normalized;
 }
 
-function importTrackingRecords(records) {
+async function importTrackingRecords(records) {
     const existingAssignmentKeys = new Set(
         getAllTrackingItems()
             .map(item => normalizeText(item.AssignmentKey))
@@ -2642,7 +2596,7 @@ function importTrackingRecords(records) {
         }
     });
 
-    saveLocalTrackingData();
+    await saveTrackingData();
     refreshTrackingFilterOptions();
     renderSavedItems();
     updateDataStatus();
@@ -2669,7 +2623,9 @@ async function importTrackingJsonFile(file) {
             getImportRecordsFromPayload(payload);
 
         const result =
-            importTrackingRecords(records);
+            await importTrackingRecords(
+                records
+            );
 
         const parts = [
             `${result.imported} importiert`,
@@ -3359,7 +3315,7 @@ function renderSavedItems() {
     }
 }
 
-function deleteLocalTrackingRecord(localId) {
+async function deleteLocalTrackingRecord(localId) {
     const before = state.savedItems.length;
 
     state.savedItems = state.savedItems.filter(
@@ -3370,7 +3326,7 @@ function deleteLocalTrackingRecord(localId) {
         return;
     }
 
-    saveLocalTrackingData();
+    await saveTrackingData();
     refreshTrackingFilterOptions();
     renderSavedItems();
     updateDataStatus();
@@ -3430,7 +3386,7 @@ function checkCurrentInput() {
     }
 }
 
-function saveCurrentRecord() {
+async function saveCurrentRecord() {
     if (!state.currentRecord) {
         return;
     }
@@ -3453,7 +3409,7 @@ function saveCurrentRecord() {
 
     state.savedItems.push(savedRecord);
 
-    saveLocalTrackingData();
+    await saveTrackingData();
     refreshTrackingFilterOptions();
     renderSavedItems();
     updateDataStatus();
@@ -3479,56 +3435,61 @@ function resetForm() {
 
 async function loadData() {
     try {
+        await TeiletrackingDataService
+            .initialize(
+                "./data-config.json"
+            );
+
         await loadOcrConfig();
 
-        const [
-            masterResponse,
-            trackingResponse
-        ] = await Promise.all([
-            fetch("../tests/data/MasterData.json"),
-            fetch("../tests/data/TrackingData.json")
-        ]);
-
-        if (!masterResponse.ok) {
-            throw new Error(
-                "MasterData.json konnte nicht geladen werden"
-            );
-        }
-
-        if (!trackingResponse.ok) {
-            throw new Error(
-                "TrackingData.json konnte nicht geladen werden"
-            );
-        }
+        const bootstrap =
+            await TeiletrackingDataService
+                .loadBootstrapData();
 
         state.baseMasterData =
-            await masterResponse.json();
+            bootstrap.baseMasterData;
 
         state.localMasterData =
-            getLocalMasterData();
+            normalizeLocalMasterData(
+                bootstrap.localMasterData
+            );
 
         state.savedItems =
-            getLocalTrackingData();
-
-        rebuildMasterData();
-
-        const tracking =
-            await trackingResponse.json();
+            (
+                Array.isArray(
+                    bootstrap.trackingRecords
+                )
+                    ? bootstrap.trackingRecords
+                    : []
+            ).map(
+                normalizeStoredTrackingRecord
+            );
 
         state.initialTrackingData =
-            tracking.Steuergeraete || [];
+            Array.isArray(
+                bootstrap.baseTrackingData
+            )
+                ? bootstrap.baseTrackingData
+                : [];
+
+        rebuildMasterData();
 
         refreshMasterDataUi();
         refreshTrackingFilterOptions();
         renderSavedItems();
 
-        elements.dataStatus.classList.remove("error");
+        elements.dataStatus.classList.remove(
+            "error"
+        );
     }
     catch (error) {
         elements.dataStatus.textContent =
             error.message;
 
-        elements.dataStatus.classList.add("error");
+        elements.dataStatus.classList.add(
+            "error"
+        );
+
         elements.checkButton.disabled = true;
         elements.addDerivatButton.disabled = true;
         elements.addIStufeButton.disabled = true;

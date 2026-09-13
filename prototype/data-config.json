@@ -1,0 +1,17 @@
+{
+  "Provider": "LOCAL",
+  "Local": {
+    "BaseMasterDataUrl": "../tests/data/MasterData.json",
+    "BaseTrackingDataUrl": "../tests/data/TrackingData.json",
+    "MasterDataStorageKey": "teiletracking.masterData.v2",
+    "LegacyMasterDataStorageKey": "teiletracking.masterData.v1",
+    "TrackingStorageKey": "teiletracking.tracking.v1"
+  },
+  "SharePoint": {
+    "Lists": {
+      "Derivate": "Derivate",
+      "IStufen": "IStufen",
+      "Steuergeraete": "Steuergeraete"
+    }
+  }
+}
