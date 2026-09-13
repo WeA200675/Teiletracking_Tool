@@ -368,6 +368,13 @@
                 Lokale Datensätze bleiben nach einem Browser-Reload erhalten.
             </p>
 
+            <p
+                id="migrationDeviceInfo"
+                class="migration-device-info"
+            >
+                Geräteidentität wird geladen …
+            </p>
+
             <div class="tracking-filter-grid">
                 <label class="field tracking-search">
                     <span>Suche</span>
@@ -405,6 +412,14 @@
                 <span id="trackingResultInfo" class="tracking-result-info">0 Datensätze</span>
 
                 <div class="tracking-toolbar-actions">
+                    <button
+                        id="exportMigrationPackageButton"
+                        class="button button-primary button-small"
+                        type="button"
+                    >
+                        Migrationspaket exportieren
+                    </button>
+
                     <button
                         id="exportTrackingJsonButton"
                         class="button button-ghost button-small"
@@ -599,9 +614,11 @@
 
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="./data-service.js"></script>
     <script src="./scanner-service.js"></script>
     <script src="./ocr-service.js"></script>
+    <script src="./migration-service.js"></script>
     <script src="./app.js"></script>
 </body>
 </html>

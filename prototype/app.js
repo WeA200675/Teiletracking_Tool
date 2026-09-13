@@ -9,6 +9,7 @@ const state = {
     currentRecord: null,
     qrScannerRunning: false,
     capturedLabelImageDataUrl: null,
+    capturedLabelCapturedAt: null,
     labelOcrBusy: false,
     labelScanAttempts: 0,
     maxLabelScanAttempts: 5
@@ -76,6 +77,8 @@ const elements = {
     trackingDetailStatus: document.getElementById("trackingDetailStatus"),
     trackingDetailContent: document.getElementById("trackingDetailContent"),
     closeTrackingDetailButton: document.getElementById("closeTrackingDetailButton"),
+    exportMigrationPackageButton: document.getElementById("exportMigrationPackageButton"),
+    migrationDeviceInfo: document.getElementById("migrationDeviceInfo"),
     exportTrackingJsonButton: document.getElementById("exportTrackingJsonButton"),
     exportTrackingCsvButton: document.getElementById("exportTrackingCsvButton"),
     importTrackingJsonButton: document.getElementById("importTrackingJsonButton"),
@@ -690,7 +693,26 @@ function normalizeStoredTrackingRecord(item) {
         DoppelDerivat: Boolean(item.DoppelDerivat),
         MismatchFields: mismatchFields,
         SavedAt: item.SavedAt || null,
-        LocalId: item.LocalId || createLocalRecordId()
+        CapturedAt:
+            item.CapturedAt ||
+            item.SavedAt ||
+            null,
+        SourceRecordId:
+            normalizeDescription(
+                item.SourceRecordId
+            ),
+        SourceDeviceId:
+            normalizeDescription(
+                item.SourceDeviceId
+            ),
+        SourceOrigin:
+            normalizeDescription(
+                item.SourceOrigin ||
+                "LEGACY_LOCAL"
+            ),
+        LocalId:
+            item.LocalId ||
+            createLocalRecordId()
     };
 }
 
@@ -1966,6 +1988,8 @@ async function terminateLabelOcrWorker() {
 
 function showCapturedLabelPreview(dataUrl, infoText) {
     state.capturedLabelImageDataUrl = dataUrl;
+    state.capturedLabelCapturedAt =
+        new Date().toISOString();
     elements.capturedLabelImage.src = dataUrl;
     elements.capturedLabelInfo.textContent = infoText;
     elements.capturedLabelPreview.classList.remove("hidden");
@@ -1973,6 +1997,7 @@ function showCapturedLabelPreview(dataUrl, infoText) {
 
 function removeCapturedLabel() {
     state.capturedLabelImageDataUrl = null;
+    state.capturedLabelCapturedAt = null;
     elements.capturedLabelImage.removeAttribute("src");
     elements.capturedLabelInfo.textContent = "";
     elements.capturedLabelPreview.classList.add("hidden");
@@ -2270,7 +2295,23 @@ function getTrackingExportRecords() {
         MismatchFields: Array.isArray(record.MismatchFields)
             ? [...record.MismatchFields]
             : [],
-        SavedAt: record.SavedAt || null
+        SavedAt: record.SavedAt || null,
+        CapturedAt:
+            record.CapturedAt ||
+            record.SavedAt ||
+            null,
+        SourceRecordId:
+            normalizeDescription(
+                record.SourceRecordId
+            ),
+        SourceDeviceId:
+            normalizeDescription(
+                record.SourceDeviceId
+            ),
+        SourceOrigin:
+            normalizeDescription(
+                record.SourceOrigin
+            )
     }));
 }
 
@@ -2303,6 +2344,96 @@ function downloadTextFile(
         );
 }
 
+
+async function ensureMigrationMetadata() {
+    const deviceId =
+        TeiletrackingDataService
+            .getOrCreateDeviceId();
+
+    let changed = false;
+
+    for (const record of state.savedItems) {
+        if (!record.SourceDeviceId) {
+            record.SourceDeviceId =
+                deviceId;
+            changed = true;
+        }
+
+        if (!record.CapturedAt) {
+            record.CapturedAt =
+                record.SavedAt ||
+                new Date().toISOString();
+            changed = true;
+        }
+
+        if (!record.SourceRecordId) {
+            record.SourceRecordId =
+                TeiletrackingMigrationService
+                    .createRecordId(
+                        record.SourceDeviceId,
+                        record.CapturedAt
+                    );
+
+            if (!record.SourceOrigin) {
+                record.SourceOrigin =
+                    "LEGACY_LOCAL";
+            }
+
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        await saveTrackingData();
+    }
+
+    return deviceId;
+}
+
+async function exportMigrationPackage() {
+    clearTrackingTransferMessage();
+
+    if (state.savedItems.length === 0) {
+        showTrackingTransferMessage(
+            "Es sind keine lokalen Tracking-Datensätze für ein Migrationspaket vorhanden.",
+            "warning"
+        );
+        return;
+    }
+
+    elements.exportMigrationPackageButton.disabled =
+        true;
+
+    try {
+        await ensureMigrationMetadata();
+
+        const result =
+            await TeiletrackingMigrationService
+                .exportPackage(
+                    state.savedItems
+                );
+
+        showTrackingTransferMessage(
+            `Migrationspaket erzeugt: ${result.recordCount} Datensätze · ${result.imageCount} Labelbilder · Batch ${result.batchId} · ${result.packageHash}`,
+            "success"
+        );
+    }
+    catch (error) {
+        console.error(
+            "Migrationspaket konnte nicht erzeugt werden:",
+            error
+        );
+
+        showTrackingTransferMessage(
+            `Migrationspaket fehlgeschlagen: ${error.message}`,
+            "error"
+        );
+    }
+    finally {
+        elements.exportMigrationPackageButton.disabled =
+            false;
+    }
+}
 
 function exportTrackingJson() {
     clearTrackingTransferMessage();
@@ -2534,6 +2665,11 @@ async function importTrackingRecords(records) {
                     record,
                     index
                 );
+
+            if (!normalized.SourceOrigin) {
+                normalized.SourceOrigin =
+                    "JSON_IMPORT";
+            }
 
             const assignmentKey =
                 normalizeText(
@@ -3106,6 +3242,26 @@ function openTrackingDetail(record) {
                 ? new Date(record.SavedAt).toLocaleString("de-DE")
                 : "–",
             false
+        ),
+        createDetailField(
+            "Erfasst am",
+            isLocal && record.CapturedAt
+                ? new Date(record.CapturedAt).toLocaleString("de-DE")
+                : "–",
+            false
+        ),
+        createDetailField(
+            "SourceRecordId",
+            record.SourceRecordId || "–"
+        ),
+        createDetailField(
+            "SourceDeviceId",
+            record.SourceDeviceId || "–"
+        ),
+        createDetailField(
+            "SourceOrigin",
+            record.SourceOrigin || "–",
+            false
         )
     );
 
@@ -3318,15 +3474,42 @@ function renderSavedItems() {
 async function deleteLocalTrackingRecord(localId) {
     const before = state.savedItems.length;
 
-    state.savedItems = state.savedItems.filter(
-        item => item.LocalId !== localId
-    );
+    const deletedRecord =
+        state.savedItems.find(
+            item =>
+                item.LocalId === localId
+        );
+
+    state.savedItems =
+        state.savedItems.filter(
+            item =>
+                item.LocalId !== localId
+        );
 
     if (state.savedItems.length === before) {
         return;
     }
 
     await saveTrackingData();
+
+    if (
+        deletedRecord &&
+        deletedRecord.SourceRecordId
+    ) {
+        try {
+            await TeiletrackingDataService
+                .deleteLabelImage(
+                    deletedRecord.SourceRecordId
+                );
+        }
+        catch (error) {
+            console.warn(
+                "Labelbild konnte beim Löschen nicht entfernt werden:",
+                error
+            );
+        }
+    }
+
     refreshTrackingFilterOptions();
     renderSavedItems();
     updateDataStatus();
@@ -3398,18 +3581,66 @@ async function saveCurrentRecord() {
         return;
     }
 
-    const savedRecord = normalizeStoredTrackingRecord({
-        ...state.currentRecord,
-        MismatchFields: [
-            ...state.currentRecord.MismatchFields
-        ],
-        SavedAt: new Date().toISOString(),
-        LocalId: createLocalRecordId()
-    });
+    const sourceDeviceId =
+        TeiletrackingDataService
+            .getOrCreateDeviceId();
 
-    state.savedItems.push(savedRecord);
+    const capturedAt =
+        state.capturedLabelCapturedAt ||
+        new Date().toISOString();
+
+    const sourceRecordId =
+        TeiletrackingMigrationService
+            .createRecordId(
+                sourceDeviceId,
+                capturedAt
+            );
+
+    const savedRecord =
+        normalizeStoredTrackingRecord({
+            ...state.currentRecord,
+            MismatchFields: [
+                ...state.currentRecord.MismatchFields
+            ],
+            SavedAt:
+                new Date()
+                    .toISOString(),
+            CapturedAt:
+                capturedAt,
+            SourceRecordId:
+                sourceRecordId,
+            SourceDeviceId:
+                sourceDeviceId,
+            SourceOrigin:
+                state.capturedLabelImageDataUrl
+                    ? "CAMERA_CAPTURE"
+                    : "MANUAL_ENTRY",
+            LocalId:
+                createLocalRecordId()
+        });
+
+    state.savedItems.push(
+        savedRecord
+    );
 
     await saveTrackingData();
+
+    if (state.capturedLabelImageDataUrl) {
+        try {
+            await TeiletrackingDataService
+                .saveLabelImage(
+                    sourceRecordId,
+                    state.capturedLabelImageDataUrl
+                );
+        }
+        catch (error) {
+            console.warn(
+                "Datensatz wurde gespeichert, das Labelbild konnte jedoch nicht dauerhaft gespeichert werden:",
+                error
+            );
+        }
+    }
+
     refreshTrackingFilterOptions();
     renderSavedItems();
     updateDataStatus();
@@ -3477,6 +3708,17 @@ async function loadData() {
         refreshMasterDataUi();
         refreshTrackingFilterOptions();
         renderSavedItems();
+
+        const deviceId =
+            TeiletrackingDataService
+                .getOrCreateDeviceId();
+
+        const dataConfig =
+            TeiletrackingDataService
+                .getConfiguration();
+
+        elements.migrationDeviceInfo.textContent =
+            `Gerät: ${deviceId} · App: ${dataConfig.Migration.AppVersion} · Schema: ${dataConfig.Migration.SchemaVersion}`;
 
         elements.dataStatus.classList.remove(
             "error"
@@ -3590,6 +3832,11 @@ document.addEventListener(
             closeTrackingDetail();
         }
     }
+);
+
+elements.exportMigrationPackageButton.addEventListener(
+    "click",
+    exportMigrationPackage
 );
 
 elements.exportTrackingJsonButton.addEventListener(

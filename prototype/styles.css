@@ -1728,3 +1728,16 @@ body.scanner-open {
     }
 }
 
+
+
+.migration-device-info {
+    margin: -4px 0 16px;
+    padding: 9px 11px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #f7f8fa;
+    color: var(--text-muted);
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 0.78rem;
+    overflow-wrap: anywhere;
+}

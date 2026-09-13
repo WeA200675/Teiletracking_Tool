@@ -13,5 +13,12 @@
       "IStufen": "IStufen",
       "Steuergeraete": "Steuergeraete"
     }
+  },
+  "Migration": {
+    "AppVersion": "0.1.0",
+    "SchemaVersion": 1,
+    "PackageFormatVersion": 1,
+    "DeviceIdStorageKey": "teiletracking.deviceId.v1",
+    "DeviceIdPrefix": "DEV"
   }
 }

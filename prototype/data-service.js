@@ -21,6 +21,14 @@
                 IStufen: "IStufen",
                 Steuergeraete: "Steuergeraete"
             }
+        },
+        Migration: {
+            AppVersion: "0.1.0",
+            SchemaVersion: 1,
+            PackageFormatVersion: 1,
+            DeviceIdStorageKey:
+                "teiletracking.deviceId.v1",
+            DeviceIdPrefix: "DEV"
         }
     });
 
@@ -81,6 +89,16 @@
                     ...result.SharePoint.Lists,
                     ...(supplied.SharePoint.Lists || {})
                 }
+            };
+        }
+
+        if (
+            supplied.Migration &&
+            typeof supplied.Migration === "object"
+        ) {
+            result.Migration = {
+                ...result.Migration,
+                ...supplied.Migration
             };
         }
 
@@ -203,6 +221,32 @@
         URL.revokeObjectURL(url);
     }
 
+    function downloadBlobFile(
+        fileName,
+        blob
+    ) {
+        if (!(blob instanceof Blob)) {
+            throw new Error(
+                "downloadBlobFile erwartet ein Blob-Objekt."
+            );
+        }
+
+        const url =
+            URL.createObjectURL(blob);
+
+        const link =
+            document.createElement("a");
+
+        link.href = url;
+        link.download = fileName;
+
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+
+        URL.revokeObjectURL(url);
+    }
+
     function createEmptyLocalMasterData() {
         return {
             Derivate: [],
@@ -212,6 +256,295 @@
                 IStufen: {}
             }
         };
+    }
+
+    function getMigrationConfig() {
+        if (!activeConfig) {
+            return clone(
+                DEFAULT_CONFIG.Migration
+            );
+        }
+
+        return {
+            ...DEFAULT_CONFIG.Migration,
+            ...(activeConfig.Migration || {})
+        };
+    }
+
+    function getOrCreateDeviceId() {
+        const migrationConfig =
+            getMigrationConfig();
+
+        const storageKey =
+            migrationConfig.DeviceIdStorageKey ||
+            "teiletracking.deviceId.v1";
+
+        const prefix =
+            String(
+                migrationConfig.DeviceIdPrefix ||
+                "DEV"
+            )
+                .trim()
+                .toUpperCase();
+
+        const existing =
+            String(
+                global.localStorage.getItem(
+                    storageKey
+                ) || ""
+            ).trim();
+
+        if (existing) {
+            return existing;
+        }
+
+        const rawId =
+            typeof global.crypto !== "undefined" &&
+            typeof global.crypto.randomUUID === "function"
+                ? global.crypto.randomUUID()
+                : (
+                    `${Date.now()}-` +
+                    Math.random().toString(16).slice(2) +
+                    "-" +
+                    Math.random().toString(16).slice(2)
+                );
+
+        const deviceId =
+            `${prefix}-${rawId}`
+                .toUpperCase();
+
+        global.localStorage.setItem(
+            storageKey,
+            deviceId
+        );
+
+        return deviceId;
+    }
+
+    const BINARY_DB_NAME =
+        "teiletracking.binary.v1";
+
+    const BINARY_DB_VERSION = 1;
+
+    const LABEL_IMAGE_STORE =
+        "labelImages";
+
+    function openBinaryDatabase() {
+        return new Promise(
+            (resolve, reject) => {
+                if (!global.indexedDB) {
+                    reject(
+                        new Error(
+                            "IndexedDB wird von diesem Browser nicht unterstützt."
+                        )
+                    );
+                    return;
+                }
+
+                const request =
+                    global.indexedDB.open(
+                        BINARY_DB_NAME,
+                        BINARY_DB_VERSION
+                    );
+
+                request.onupgradeneeded =
+                    event => {
+                        const database =
+                            event.target.result;
+
+                        if (
+                            !database.objectStoreNames
+                                .contains(
+                                    LABEL_IMAGE_STORE
+                                )
+                        ) {
+                            database.createObjectStore(
+                                LABEL_IMAGE_STORE,
+                                {
+                                    keyPath: "RecordId"
+                                }
+                            );
+                        }
+                    };
+
+                request.onsuccess =
+                    () => resolve(
+                        request.result
+                    );
+
+                request.onerror =
+                    () => reject(
+                        request.error ||
+                        new Error(
+                            "Bildspeicher konnte nicht geöffnet werden."
+                        )
+                    );
+            }
+        );
+    }
+
+    async function runImageStoreTransaction(
+        mode,
+        callback
+    ) {
+        const database =
+            await openBinaryDatabase();
+
+        try {
+            return await new Promise(
+                (resolve, reject) => {
+                    const transaction =
+                        database.transaction(
+                            LABEL_IMAGE_STORE,
+                            mode
+                        );
+
+                    const store =
+                        transaction.objectStore(
+                            LABEL_IMAGE_STORE
+                        );
+
+                    try {
+                        callback(
+                            store,
+                            resolve,
+                            reject
+                        );
+                    }
+                    catch (error) {
+                        reject(error);
+                    }
+
+                    transaction.onerror =
+                        () => reject(
+                            transaction.error ||
+                            new Error(
+                                "Bildspeicher-Transaktion ist fehlgeschlagen."
+                            )
+                        );
+
+                    transaction.onabort =
+                        () => reject(
+                            transaction.error ||
+                            new Error(
+                                "Bildspeicher-Transaktion wurde abgebrochen."
+                            )
+                        );
+                }
+            );
+        }
+        finally {
+            database.close();
+        }
+    }
+
+    async function saveLabelImage(
+        recordId,
+        dataUrl
+    ) {
+        const normalizedRecordId =
+            String(recordId || "").trim();
+
+        const normalizedDataUrl =
+            String(dataUrl || "").trim();
+
+        if (
+            !normalizedRecordId ||
+            !normalizedDataUrl
+        ) {
+            return false;
+        }
+
+        await runImageStoreTransaction(
+            "readwrite",
+            (store, resolve, reject) => {
+                const request =
+                    store.put({
+                        RecordId:
+                            normalizedRecordId,
+                        DataUrl:
+                            normalizedDataUrl,
+                        SavedAt:
+                            new Date()
+                                .toISOString()
+                    });
+
+                request.onsuccess =
+                    () => resolve(true);
+
+                request.onerror =
+                    () => reject(
+                        request.error
+                    );
+            }
+        );
+
+        return true;
+    }
+
+    async function getLabelImage(
+        recordId
+    ) {
+        const normalizedRecordId =
+            String(recordId || "").trim();
+
+        if (!normalizedRecordId) {
+            return null;
+        }
+
+        return runImageStoreTransaction(
+            "readonly",
+            (store, resolve, reject) => {
+                const request =
+                    store.get(
+                        normalizedRecordId
+                    );
+
+                request.onsuccess =
+                    () => resolve(
+                        request.result &&
+                        request.result.DataUrl
+                            ? request.result.DataUrl
+                            : null
+                    );
+
+                request.onerror =
+                    () => reject(
+                        request.error
+                    );
+            }
+        );
+    }
+
+    async function deleteLabelImage(
+        recordId
+    ) {
+        const normalizedRecordId =
+            String(recordId || "").trim();
+
+        if (!normalizedRecordId) {
+            return false;
+        }
+
+        await runImageStoreTransaction(
+            "readwrite",
+            (store, resolve, reject) => {
+                const request =
+                    store.delete(
+                        normalizedRecordId
+                    );
+
+                request.onsuccess =
+                    () => resolve(true);
+
+                request.onerror =
+                    () => reject(
+                        request.error
+                    );
+            }
+        );
+
+        return true;
     }
 
     function createLocalProvider(config) {
@@ -579,6 +912,11 @@
             clearTrackingData,
             createLocalRecordId:
                 createRecordId,
-            downloadTextFile
+            getOrCreateDeviceId,
+            saveLabelImage,
+            getLabelImage,
+            deleteLabelImage,
+            downloadTextFile,
+            downloadBlobFile
         });
 })(window);
