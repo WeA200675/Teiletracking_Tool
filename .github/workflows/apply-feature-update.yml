@@ -24,17 +24,32 @@ jobs:
       - name: Reassemble and verify feature payload
         shell: bash
         run: |
-          cat .feature-update/part-* | tr -d '\n' | base64 -d > /tmp/feature-selected.tar.xz
+          cat \
+            .feature-update/part-00 \
+            .feature-update/part-01 \
+            .feature-update/p02-0 \
+            .feature-update/p02-1 \
+            .feature-update/p02-2 \
+            .feature-update/p03-0 \
+            .feature-update/p03-1 \
+            .feature-update/p03-2 \
+            .feature-update/part-04 \
+            | tr -d '\n' \
+            | base64 -d \
+            > /tmp/feature-selected.tar.xz
+
           echo "53a84e7fd343daee31237e79f1f268c2f8f6f4e1311348cb893324122b8eeae1  /tmp/feature-selected.tar.xz" | sha256sum -c -
 
       - name: Apply selected feature files
         shell: bash
         run: |
           tar -xJf /tmp/feature-selected.tar.xz -C .
-          # The payload originated from a later local provider experiment. The
-          # provider test itself is deliberately not part of this feature, so
-          # keep Run-AllTests aligned with the files that really belong here.
+
+          # Der ausgewählte Feature-Stand enthält nicht den separaten
+          # SharePoint-Provider-Test. Deshalb bleibt der Gesamttest konsistent
+          # mit den tatsächlich eingespielten Dateien.
           sed -i '/Test-SharePointImportProvider\.ps1/d' tests/Run-AllTests.ps1
+
           rm -rf .feature-update
           rm -f .github/workflows/apply-feature-update.yml
 
