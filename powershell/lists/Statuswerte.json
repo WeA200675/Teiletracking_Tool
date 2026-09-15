@@ -1,0 +1,36 @@
+{
+  "Title": "Statuswerte",
+  "Description": "Konfigurierbare Teile-Statuswerte mit eindeutiger Farbe",
+  "Fields": [
+    {
+      "InternalName": "StatusCode",
+      "DisplayName": "Statuscode",
+      "Type": "Text",
+      "Required": true
+    },
+    {
+      "InternalName": "Anzeigename",
+      "DisplayName": "Anzeigename",
+      "Type": "Text",
+      "Required": true
+    },
+    {
+      "InternalName": "Farbe",
+      "DisplayName": "Farbe",
+      "Type": "Text",
+      "Required": true
+    },
+    {
+      "InternalName": "Beschreibung",
+      "DisplayName": "Beschreibung",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "Aktiv",
+      "DisplayName": "Aktiv",
+      "Type": "Boolean",
+      "Required": true
+    }
+  ]
+}

@@ -314,6 +314,49 @@
                 normalizeText(
                     record.IStufe
                 ),
+            ATS:
+                normalizeText(
+                    record.ATS
+                ),
+            YNummer:
+                normalizeText(
+                    record.YNummer
+                ),
+            PartStatuses:
+                Array.isArray(
+                    record.PartStatuses
+                )
+                    ? record.PartStatuses
+                        .map(normalizeText)
+                        .filter(Boolean)
+                        .sort()
+                    : String(
+                        record.Teilestatus ||
+                        ""
+                    )
+                        .split(/[;,|]/)
+                        .map(normalizeText)
+                        .filter(Boolean),
+            Teilestatus:
+                Array.isArray(
+                    record.PartStatuses
+                )
+                    ? record.PartStatuses
+                        .map(normalizeText)
+                        .filter(Boolean)
+                        .sort()
+                        .join(";")
+                    : normalizeText(
+                        record.Teilestatus
+                    ),
+            TransferBatchId:
+                normalizeDescription(
+                    record.TransferBatchId
+                ),
+            TransferSourceRecordId:
+                normalizeDescription(
+                    record.TransferSourceRecordId
+                ),
             LabelHardware:
                 normalizeText(
                     record.LabelHardware
@@ -420,9 +463,17 @@
             }
         }
 
+        const stableRecordForHash = {
+            ...base
+        };
+
+        delete stableRecordForHash.BatchId;
+
         const recordHash =
             await sha256Text(
-                canonicalJson(base)
+                canonicalJson(
+                    stableRecordForHash
+                )
             );
 
         return {
@@ -491,6 +542,19 @@
             }
         }
 
+        const featureMasterData =
+            global.TeiletrackingFeatureService &&
+            typeof global.TeiletrackingFeatureService
+                .getMigrationSnapshot ===
+                "function"
+                ? global.TeiletrackingFeatureService
+                    .getMigrationSnapshot()
+                : {
+                    ATS: [],
+                    YNummern: [],
+                    Statuswerte: []
+                };
+
         const trackingPayload = {
             Format:
                 "teiletracking.migration.data",
@@ -502,6 +566,8 @@
                 deviceId,
             RecordCount:
                 preparedRecords.length,
+            FeatureMasterData:
+                featureMasterData,
             Records:
                 preparedRecords
         };
@@ -563,6 +629,8 @@
                 imageHashes,
             HashAlgorithm:
                 "SHA-256",
+            RecordHashScope:
+                "Canonical record without RecordHash and BatchId",
             HashScope:
                 "Canonical manifest without PackageHash + TrackingDataHash + sorted image hashes"
         };

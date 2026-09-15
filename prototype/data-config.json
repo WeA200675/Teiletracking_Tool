@@ -11,13 +11,16 @@
     "Lists": {
       "Derivate": "Derivate",
       "IStufen": "IStufen",
-      "Steuergeraete": "Steuergeraete"
+      "Steuergeraete": "Steuergeraete",
+      "ATS": "ATS",
+      "YNummern": "YNummern",
+      "Statuswerte": "Statuswerte"
     }
   },
   "Migration": {
-    "AppVersion": "0.1.0",
-    "SchemaVersion": 1,
-    "PackageFormatVersion": 1,
+    "AppVersion": "0.3.0",
+    "SchemaVersion": 2,
+    "PackageFormatVersion": 2,
     "DeviceIdStorageKey": "teiletracking.deviceId.v1",
     "DeviceIdPrefix": "DEV"
   }

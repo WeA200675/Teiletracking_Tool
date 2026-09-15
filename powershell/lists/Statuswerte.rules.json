@@ -1,0 +1,12 @@
+{
+  "List": "Statuswerte",
+  "Indexes": [
+    "StatusCode",
+    "Farbe",
+    "Aktiv"
+  ],
+  "Unique": [
+    "StatusCode",
+    "Farbe"
+  ]
+}

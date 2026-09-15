@@ -562,6 +562,10 @@
                             FileName:
                                 verifiedPackage
                                     .fileName,
+                            ArchiveFileName:
+                                mappingPlan
+                                    .Archive
+                                    .FileName,
                             FileSize:
                                 verifiedPackage
                                     .fileSize,
@@ -639,6 +643,10 @@
                         FileName:
                             verifiedPackage
                                 .fileName,
+                        ArchiveFileName:
+                            mappingPlan
+                                .Archive
+                                .FileName,
                         ImportStatus:
                             "IMPORTED",
                         Status:

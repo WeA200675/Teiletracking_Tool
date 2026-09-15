@@ -100,7 +100,12 @@ $requiredSteuergeraeteFields =
         "ImportedBy",
         "RecordHash",
         "LabelImageFile",
-        "LabelImageHash"
+        "LabelImageHash",
+        "ATS",
+        "YNummer",
+        "Teilestatus",
+        "TransferBatchId",
+        "TransferSourceRecordId"
     )
 
 $steuergeraeteFieldNames =
@@ -183,6 +188,7 @@ $requiredBatchFields =
         "ConflictCount",
         "ImageCount",
         "FileName",
+        "ArchiveFileName",
         "ImportStatus"
     )
 
@@ -254,6 +260,7 @@ foreach (
         "BatchId",
         "DeviceId",
         "PackageHash",
+        "OriginalFileName",
         "PackageCreatedAt",
         "ImportedAt",
         "ImportedBy",

@@ -33,6 +33,36 @@
       "Required": true
     },
     {
+      "InternalName": "ATS",
+      "DisplayName": "ATS",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "YNummer",
+      "DisplayName": "Y-Nummer",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "Teilestatus",
+      "DisplayName": "Teile-Status",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "TransferBatchId",
+      "DisplayName": "ATS Transfer Batch ID",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "TransferSourceRecordId",
+      "DisplayName": "ATS Transfer Quelle",
+      "Type": "Text",
+      "Required": false
+    },
+    {
       "InternalName": "LabelPartNumber",
       "DisplayName": "Label Teilenummer",
       "Type": "Text",
@@ -138,6 +168,7 @@
         "MANUAL_ENTRY",
         "JSON_IMPORT",
         "LEGACY_LOCAL",
+        "ATS_TRANSFER",
         "UNKNOWN"
       ]
     },

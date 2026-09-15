@@ -5,7 +5,10 @@
     "Derivate": "Derivate",
     "IStufen": "IStufen",
     "Steuergeraete": "Steuergeraete",
-    "ImportBatches": "ImportBatches"
+    "ImportBatches": "ImportBatches",
+    "ATS": "ATS",
+    "YNummern": "YNummern",
+    "Statuswerte": "Statuswerte"
   },
   "Libraries": {
     "TrackingImportArchiv": "TrackingImportArchiv"

@@ -12,14 +12,14 @@
             <div>
                 <p class="eyebrow">Lokaler Prototyp</p>
                 <h1>Teiletracking</h1>
-                <p class="subtitle">Steuergerät prüfen und einem Derivat / einer I-Stufe zuordnen</p>
+                <p class="subtitle">Steuergerät prüfen und Derivat, I-Stufe, ATS sowie Y-Nummer zuordnen</p>
             </div>
             <div id="dataStatus" class="data-status">Lade Testdaten …</div>
         </header>
 
         <section class="card">
             <h2>1. Fahrzeugzuordnung</h2>
-            <div class="form-grid">
+            <div class="form-grid assignment-grid">
                 <label class="field">
                     <span>Derivat</span>
                     <select id="derivat">
@@ -32,6 +32,27 @@
                         <option value="">Bitte wählen</option>
                     </select>
                 </label>
+                <label class="field">
+                    <span>ATS</span>
+                    <select id="ats">
+                        <option value="">Bitte wählen</option>
+                    </select>
+                </label>
+                <label class="field">
+                    <span>Y-Nummer</span>
+                    <select id="yNummer">
+                        <option value="">Bitte wählen</option>
+                    </select>
+                </label>
+
+                <div class="field assignment-status-field">
+                    <span>Teile-Status (Mehrfachauswahl)</span>
+                    <details id="partStatusDropdown" class="part-status-dropdown">
+                        <summary id="partStatusSummary">Bitte wählen</summary>
+                        <div id="partStatusOptions" class="part-status-options"></div>
+                    </details>
+                    <div id="partStatusChips" class="selected-part-statuses"></div>
+                </div>
             </div>
         </section>
 
@@ -39,12 +60,12 @@
             <div class="section-heading">
                 <div>
                     <p class="eyebrow">Stammdaten</p>
-                    <h2>Derivate und I-Stufen pflegen</h2>
+                    <h2>Derivate, I-Stufen, ATS, Y-Nummern und Teile-Status pflegen</h2>
                 </div>
             </div>
 
             <p class="hint master-data-intro">
-                Neu angelegte Werte und Statusänderungen werden lokal im Browser gespeichert.
+                Neu angelegte Werte und Statusänderungen werden lokal im Browser gespeichert und stehen sofort in der Fahrzeugzuordnung zur Verfügung.
             </p>
 
             <div class="master-data-grid">
@@ -77,7 +98,55 @@
                         I-Stufe hinzufügen
                     </button>
                 </div>
+
+                <div class="master-data-panel">
+                    <h3>ATS hinzufügen</h3>
+                    <label class="field">
+                        <span>ATS</span>
+                        <input id="newAtsCode" type="text" autocomplete="off" placeholder="z. B. ATS-2026-01">
+                    </label>
+                    <label class="field">
+                        <span>Beschreibung</span>
+                        <input id="newAtsDescription" type="text" autocomplete="off" placeholder="optional">
+                    </label>
+                    <button id="addAtsButton" class="button button-secondary" type="button">ATS hinzufügen</button>
+                </div>
+
+                <div class="master-data-panel">
+                    <h3>Y-Nummer hinzufügen</h3>
+                    <label class="field">
+                        <span>Y-Nummer</span>
+                        <input id="newYNummerCode" type="text" autocomplete="off" placeholder="z. B. Y-123456">
+                    </label>
+                    <label class="field">
+                        <span>Beschreibung</span>
+                        <input id="newYNummerDescription" type="text" autocomplete="off" placeholder="optional">
+                    </label>
+                    <button id="addYNummerButton" class="button button-secondary" type="button">Y-Nummer hinzufügen</button>
+                </div>
+
+                <div class="master-data-panel status-master-panel">
+                    <h3>Teile-Status hinzufügen</h3>
+                    <label class="field">
+                        <span>Bezeichnung</span>
+                        <input id="newStatusName" type="text" autocomplete="off" placeholder="z. B. Nacharbeit">
+                    </label>
+                    <label class="field">
+                        <span>Farbe</span>
+                        <select id="newStatusColor">
+                            <option value="">Farbe wählen</option>
+                        </select>
+                    </label>
+                    <label class="field">
+                        <span>Beschreibung</span>
+                        <input id="newStatusDescription" type="text" autocomplete="off" placeholder="optional">
+                    </label>
+                    <button id="addStatusValueButton" class="button button-secondary" type="button">Statuswert hinzufügen</button>
+                    <p class="hint compact">Eine bereits verwendete Farbe wird automatisch gesperrt und kann keinem zweiten Statuswert zugewiesen werden.</p>
+                </div>
             </div>
+
+            <div id="featureMasterDataMessage" class="master-data-message hidden" aria-live="polite"></div>
 
             <div id="masterDataMessage" class="master-data-message hidden" aria-live="polite"></div>
 
@@ -89,6 +158,18 @@
                 <div>
                     <strong id="iStufeCount">0</strong>
                     <span>I-Stufen gesamt</span>
+                </div>
+                <div>
+                    <strong id="atsCount">0</strong>
+                    <span>ATS gesamt</span>
+                </div>
+                <div>
+                    <strong id="yNummerCount">0</strong>
+                    <span>Y-Nummern gesamt</span>
+                </div>
+                <div>
+                    <strong id="statusValueCount">0</strong>
+                    <span>Statuswerte gesamt</span>
                 </div>
                 <div>
                     <strong id="localMasterDataCount">0</strong>
@@ -111,6 +192,30 @@
                         <h3>I-Stufen</h3>
                     </div>
                     <div id="iStufenList" class="master-data-list"></div>
+                </section>
+
+                <section class="master-data-list-section">
+                    <div class="master-data-list-heading">
+                        <p class="eyebrow">Übersicht</p>
+                        <h3>ATS</h3>
+                    </div>
+                    <div id="atsList" class="master-data-list"></div>
+                </section>
+
+                <section class="master-data-list-section">
+                    <div class="master-data-list-heading">
+                        <p class="eyebrow">Übersicht</p>
+                        <h3>Y-Nummern</h3>
+                    </div>
+                    <div id="yNummernList" class="master-data-list"></div>
+                </section>
+
+                <section class="master-data-list-section">
+                    <div class="master-data-list-heading">
+                        <p class="eyebrow">Übersicht</p>
+                        <h3>Teile-Status</h3>
+                    </div>
+                    <div id="statusValuesList" class="master-data-list"></div>
                 </section>
             </div>
         </section>
@@ -349,9 +454,61 @@
                 <div><dt>SerialNumber</dt><dd id="resultSerialNumber">–</dd></div>
                 <div><dt>Derivat</dt><dd id="resultDerivat">–</dd></div>
                 <div><dt>I-Stufe</dt><dd id="resultIStufe">–</dd></div>
+                <div><dt>ATS</dt><dd id="resultAts">–</dd></div>
+                <div><dt>Y-Nummer</dt><dd id="resultYNummer">–</dd></div>
+                <div class="result-status-values"><dt>Teile-Status</dt><dd id="resultPartStatuses">–</dd></div>
                 <div><dt>DeviceKey</dt><dd id="resultDeviceKey">–</dd></div>
                 <div><dt>AssignmentKey</dt><dd id="resultAssignmentKey">–</dd></div>
             </dl>
+        </section>
+
+        <section class="card ats-transfer-card">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">Zeitsparender Logistik-Workflow</p>
+                    <h2>ATS-Schnellübernahme</h2>
+                </div>
+            </div>
+
+            <p class="hint">
+                Quell-ATS und Ziel-ATS wählen, bei Bedarf nach Teilen suchen, alle sichtbaren Teile markieren und mit einem Klick übernehmen.
+                Y-Nummer und Teile-Status werden standardmäßig beibehalten. Bereits vorhandene Zielzuordnungen werden automatisch übersprungen.
+            </p>
+
+            <div class="ats-transfer-controls">
+                <label class="field">
+                    <span>Quell-ATS</span>
+                    <select id="transferSourceAts"><option value="">Quell-ATS wählen</option></select>
+                </label>
+                <label class="field">
+                    <span>Ziel-ATS</span>
+                    <select id="transferTargetAts"><option value="">Ziel-ATS wählen</option></select>
+                </label>
+                <label class="field">
+                    <span>Ziel-Y-Nummer</span>
+                    <select id="transferTargetYNumber"><option value="__KEEP__">Y-Nummer beibehalten</option></select>
+                </label>
+                <label class="field ats-transfer-search">
+                    <span>Teile filtern</span>
+                    <input id="transferSearch" type="search" autocomplete="off" placeholder="PN, SN, Derivat, I-Stufe, Y-Nummer …">
+                </label>
+            </div>
+
+            <div class="ats-transfer-toolbar">
+                <div>
+                    <button id="transferSelectAllButton" class="button button-secondary button-small" type="button">Alle sichtbaren markieren</button>
+                    <button id="transferClearSelectionButton" class="button button-ghost button-small" type="button">Auswahl leeren</button>
+                </div>
+                <span id="transferSelectionInfo" class="tracking-result-info">0 ausgewählt</span>
+            </div>
+
+            <div id="transferCandidateList" class="ats-transfer-list"></div>
+
+            <div class="ats-transfer-footer">
+                <button id="transferSelectedButton" class="button button-primary" type="button">Ausgewählte Teile in Ziel-ATS übernehmen</button>
+            </div>
+
+            <div id="atsTransferMessage" class="tracking-transfer-message hidden" aria-live="polite"></div>
         </section>
 
         <section class="card">
@@ -404,6 +561,27 @@
                     <span>I-Stufe</span>
                     <select id="trackingIStufeFilter">
                         <option value="">Alle I-Stufen</option>
+                    </select>
+                </label>
+
+                <label class="field">
+                    <span>ATS</span>
+                    <select id="trackingAtsFilter">
+                        <option value="">Alle ATS</option>
+                    </select>
+                </label>
+
+                <label class="field">
+                    <span>Y-Nummer</span>
+                    <select id="trackingYNummerFilter">
+                        <option value="">Alle Y-Nummern</option>
+                    </select>
+                </label>
+
+                <label class="field">
+                    <span>Teile-Status</span>
+                    <select id="trackingPartStatusFilter">
+                        <option value="">Alle Teile-Status</option>
                     </select>
                 </label>
             </div>
@@ -556,6 +734,8 @@
                     Kamera wird vorbereitet …
                 </p>
 
+                <div id="scannerDiagnostics" class="scanner-diagnostics" aria-live="polite"></div>
+
                 <div
                     id="scanRetryHint"
                     class="scan-retry-hint hidden"
@@ -602,11 +782,10 @@
                 </div>
 
                 <p class="hint">
-                    Richte das komplette Label so aus, dass QR-Code und sichtbare Beschriftung gut lesbar sind.
-                    Mit „Label aufnehmen“ wird ein einzelnes Foto erzeugt. Aus genau diesem Bild werden anschließend
-                    der QR-Code und die sichtbare Beschriftung gelesen und miteinander verglichen.
-                    Ist die Aufnahme nicht vollständig lesbar, erscheint „Bitte erneut scannen“.
-                    Nach dem fünften erfolglosen Versuch wird „Manuell hinzufügen“ angeboten.
+                    Fülle den markierten Rahmen möglichst vollständig mit dem Label, halte das Handy parallel zum Label und vermeide Spiegelungen.
+                    Nach dem Auslösen prüft das Tool Bildschärfe und Helligkeit, versucht den QR-Code in mehreren Bildvarianten und Teilbereichen
+                    und startet danach die OCR. Wenn ein QR-Code technisch erkannt wird, aber das Datenformat unbekannt ist, wird das jetzt getrennt angezeigt.
+                    Ist die Aufnahme nicht vollständig lesbar, erscheint „Bitte erneut scannen“. Nach dem fünften erfolglosen Versuch wird „Manuell hinzufügen“ angeboten.
                 </p>
             </div>
         </section>
@@ -619,6 +798,7 @@
     <script src="./scanner-service.js"></script>
     <script src="./ocr-service.js"></script>
     <script src="./migration-service.js"></script>
+    <script src="./feature-service.js"></script>
     <script src="./app.js"></script>
 </body>
 </html>

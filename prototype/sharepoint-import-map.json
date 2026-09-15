@@ -50,6 +50,26 @@
           "Source": "record.IStufe",
           "Type": "Text"
         },
+        "ATS": {
+          "Source": "record.ATS",
+          "Type": "Text"
+        },
+        "YNummer": {
+          "Source": "record.YNummer",
+          "Type": "Text"
+        },
+        "Teilestatus": {
+          "Source": "record.Teilestatus",
+          "Type": "Text"
+        },
+        "TransferBatchId": {
+          "Source": "record.TransferBatchId",
+          "Type": "Text"
+        },
+        "TransferSourceRecordId": {
+          "Source": "record.TransferSourceRecordId",
+          "Type": "Text"
+        },
         "LabelPartNumber": {
           "Source": "record.LabelPartNumber",
           "Type": "Text"
@@ -155,6 +175,7 @@
         "ConflictCount",
         "ImageCount",
         "FileName",
+        "ArchiveFileName",
         "ImportStatus"
       ],
       "Fields": {
@@ -229,17 +250,22 @@
         "TrackingDataHash": {
           "Source": "package.manifest.TrackingDataHash",
           "Type": "Text"
+        },
+        "ArchiveFileName": {
+          "Source": "context.ArchiveFileName",
+          "Type": "Text"
         }
       }
     },
     "TrackingImportArchiv": {
       "Kind": "DocumentLibrary",
       "LogicalTarget": "TrackingImportArchiv",
-      "FileNameSource": "package.fileName",
+      "FileNameSource": "context.ArchiveFileName",
       "RequiredForImport": [
         "BatchId",
         "DeviceId",
         "PackageHash",
+        "OriginalFileName",
         "PackageCreatedAt",
         "ImportedAt",
         "ImportedBy",
@@ -287,6 +313,10 @@
         "ImportStatus": {
           "Constant": "IMPORTED",
           "Type": "Choice"
+        },
+        "OriginalFileName": {
+          "Source": "package.fileName",
+          "Type": "Text"
         }
       }
     }
