@@ -1,0 +1,24 @@
+{
+  "Title": "ATS",
+  "Description": "Verfügbare ATS-Stammdaten für Fahrzeugzuordnung und schnelle Teileübernahme",
+  "Fields": [
+    {
+      "InternalName": "ATSCode",
+      "DisplayName": "ATS",
+      "Type": "Text",
+      "Required": true
+    },
+    {
+      "InternalName": "Beschreibung",
+      "DisplayName": "Beschreibung",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "Aktiv",
+      "DisplayName": "Aktiv",
+      "Type": "Boolean",
+      "Required": true
+    }
+  ]
+}

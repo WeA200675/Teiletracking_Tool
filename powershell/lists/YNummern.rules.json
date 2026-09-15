@@ -1,0 +1,10 @@
+{
+  "List": "YNummern",
+  "Indexes": [
+    "YNummerCode",
+    "Aktiv"
+  ],
+  "Unique": [
+    "YNummerCode"
+  ]
+}

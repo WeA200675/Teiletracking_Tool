@@ -1,0 +1,28 @@
+{
+  "Version": 1,
+  "ATS": [],
+  "YNummern": [],
+  "Statuswerte": [
+    {
+      "StatusCode": "VERBAUT",
+      "Anzeigename": "Verbaut",
+      "Farbe": "#107C10",
+      "Beschreibung": "Teil ist verbaut",
+      "Aktiv": true
+    },
+    {
+      "StatusCode": "NICHT VERBAUT",
+      "Anzeigename": "Nicht verbaut",
+      "Farbe": "#0078D4",
+      "Beschreibung": "Teil ist nicht verbaut",
+      "Aktiv": true
+    },
+    {
+      "StatusCode": "VERSCHROTTET",
+      "Anzeigename": "Verschrottet",
+      "Farbe": "#A4262C",
+      "Beschreibung": "Teil wurde verschrottet",
+      "Aktiv": true
+    }
+  ]
+}

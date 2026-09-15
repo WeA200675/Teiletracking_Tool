@@ -1,0 +1,10 @@
+{
+  "List": "ATS",
+  "Indexes": [
+    "ATSCode",
+    "Aktiv"
+  ],
+  "Unique": [
+    "ATSCode"
+  ]
+}

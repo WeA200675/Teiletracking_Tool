@@ -1,0 +1,24 @@
+{
+  "Title": "YNummern",
+  "Description": "Verfügbare Y-Nummern für die Fahrzeugzuordnung",
+  "Fields": [
+    {
+      "InternalName": "YNummerCode",
+      "DisplayName": "Y-Nummer",
+      "Type": "Text",
+      "Required": true
+    },
+    {
+      "InternalName": "Beschreibung",
+      "DisplayName": "Beschreibung",
+      "Type": "Text",
+      "Required": false
+    },
+    {
+      "InternalName": "Aktiv",
+      "DisplayName": "Aktiv",
+      "Type": "Boolean",
+      "Required": true
+    }
+  ]
+}

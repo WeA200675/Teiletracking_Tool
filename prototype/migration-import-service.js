@@ -127,12 +127,23 @@
         }
     }
 
-    function getRecordWithoutHash(record) {
+    function getRecordForHash(
+        record,
+        packageFormatVersion
+    ) {
         const copy = {
             ...record
         };
 
         delete copy.RecordHash;
+
+        if (
+            Number(
+                packageFormatVersion
+            ) >= 2
+        ) {
+            delete copy.BatchId;
+        }
 
         return copy;
     }
@@ -336,6 +347,7 @@
 
     async function verifyRecordHashes(
         trackingPayload,
+        manifest,
         checks
     ) {
         const records =
@@ -365,8 +377,10 @@
             const actualHash =
                 await sha256Text(
                     canonicalJson(
-                        getRecordWithoutHash(
-                            record || {}
+                        getRecordForHash(
+                            record || {},
+                            manifest
+                                .PackageFormatVersion
                         )
                     )
                 );
@@ -785,6 +799,7 @@
         const recordHashVerification =
             await verifyRecordHashes(
                 trackingPayload,
+                manifest,
                 checks
             );
 

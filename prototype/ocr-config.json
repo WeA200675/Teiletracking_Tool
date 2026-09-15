@@ -1,6 +1,6 @@
 {
   "ProfileName": "Standard-Label",
-  "Version": 1,
+  "Version": 2,
   "Fields": {
     "PartNumber": {
       "Aliases": [
@@ -14,7 +14,14 @@
         "PART NR.",
         "TEILENUMMER",
         "TEILE NR",
-        "TEILE NR."
+        "TEILE NR.",
+        "P N",
+        "PART-NO",
+        "PARTNO",
+        "PART-NUMBER",
+        "PART NUM",
+        "TEIL NR",
+        "TEIL-NR"
       ],
       "Required": true
     },
@@ -29,7 +36,12 @@
         "SERIALNUMBER",
         "SERIENNUMMER",
         "SERIEN NR",
-        "SERIEN NR."
+        "SERIEN NR.",
+        "S N",
+        "SERIAL-NO",
+        "SERIALNO",
+        "SERIAL-NUMBER",
+        "SERIEN-NR"
       ],
       "Required": true
     },
@@ -39,7 +51,10 @@
         "H/W",
         "HARDWARE",
         "HARDWARE VERSION",
-        "HW VERSION"
+        "HW VERSION",
+        "H W",
+        "HW-VERSION",
+        "HARDWARE-VERSION"
       ],
       "Required": false
     },
@@ -49,7 +64,10 @@
         "S/W",
         "SOFTWARE",
         "SOFTWARE VERSION",
-        "SW VERSION"
+        "SW VERSION",
+        "S W",
+        "SW-VERSION",
+        "SOFTWARE-VERSION"
       ],
       "Required": false
     }

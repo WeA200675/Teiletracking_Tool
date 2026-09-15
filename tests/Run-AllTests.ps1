@@ -6,7 +6,8 @@ $TestFiles = @(
     "Test-LocalSharePoint.ps1",
     "Test-LocalDuplicates.ps1",
     "Test-EndToEndLocal.ps1",
-    "Test-MigrationSchema.ps1"
+    "Test-MigrationSchema.ps1",
+    "Test-FeatureMasterData.ps1"
 )
 
 $Passed = 0

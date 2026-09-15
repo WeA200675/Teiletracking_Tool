@@ -8,6 +8,7 @@
             PartNumber: {
                 Aliases: [
                     "PN",
+                    "P N",
                     "P/N",
                     "PART NO",
                     "PART NO.",
@@ -24,6 +25,7 @@
             SerialNumber: {
                 Aliases: [
                     "SN",
+                    "S N",
                     "S/N",
                     "SERIAL",
                     "SERIAL NO",
@@ -39,6 +41,7 @@
             Hardware: {
                 Aliases: [
                     "HW",
+                    "H W",
                     "H/W",
                     "HARDWARE",
                     "HARDWARE VERSION",
@@ -49,6 +52,7 @@
             Software: {
                 Aliases: [
                     "SW",
+                    "S W",
                     "S/W",
                     "SOFTWARE",
                     "SOFTWARE VERSION",
@@ -460,7 +464,71 @@
         return "";
     }
 
-    function extractTrackingData(rawText) {
+    function containsExactOcrToken(
+        rawText,
+        value
+    ) {
+        const normalizedValue =
+            normalizeText(value);
+
+        if (!normalizedValue) {
+            return false;
+        }
+
+        const compactText =
+            normalizeText(rawText)
+                .replace(/[^A-Z0-9._/\-]+/g, " ");
+
+        const escaped =
+            escapeRegex(normalizedValue);
+
+        return new RegExp(
+            `(?:^|\\s)${escaped}(?:$|\\s)`,
+            "i"
+        ).test(compactText);
+    }
+
+    function recoverExactQrValuesFromOcr(
+        data,
+        rawText,
+        qrData
+    ) {
+        if (!qrData) {
+            return data;
+        }
+
+        const result = {
+            ...data
+        };
+
+        const mappings = [
+            ["partNumber", qrData.partNumber],
+            ["serialNumber", qrData.serialNumber],
+            ["hardware", qrData.hardware],
+            ["software", qrData.software]
+        ];
+
+        for (const [fieldName, qrValue] of mappings) {
+            if (
+                !result[fieldName] &&
+                qrValue &&
+                containsExactOcrToken(
+                    rawText,
+                    qrValue
+                )
+            ) {
+                result[fieldName] =
+                    normalizeText(qrValue);
+            }
+        }
+
+        return result;
+    }
+
+    function extractTrackingData(
+        rawText,
+        qrData = null
+    ) {
         const normalizedRaw =
             String(rawText || "")
                 .replace(/\r/g, "\n");
@@ -478,7 +546,7 @@
             )
         ];
 
-        return {
+        const extracted = {
             partNumber:
                 findFieldValue(
                     combinedLines,
@@ -508,6 +576,12 @@
                     )
                 )
         };
+
+        return recoverExactQrValuesFromOcr(
+            extracted,
+            rawText,
+            qrData
+        );
     }
 
     function buildTrackingString(data) {
@@ -874,12 +948,71 @@
         return canvas;
     }
 
+    function createCenterCropCanvas(
+        sourceCanvas,
+        ratio = 0.9
+    ) {
+        const cropWidth =
+            Math.round(
+                sourceCanvas.width * ratio
+            );
+        const cropHeight =
+            Math.round(
+                sourceCanvas.height * ratio
+            );
+        const x =
+            Math.round(
+                (sourceCanvas.width - cropWidth) / 2
+            );
+        const y =
+            Math.round(
+                (sourceCanvas.height - cropHeight) / 2
+            );
+
+        const canvas =
+            document.createElement("canvas");
+        canvas.width = cropWidth;
+        canvas.height = cropHeight;
+
+        const context =
+            canvas.getContext(
+                "2d",
+                { willReadFrequently: true }
+            );
+
+        if (!context) {
+            throw new Error(
+                "OCR-Zentralausschnitt konnte nicht erstellt werden."
+            );
+        }
+
+        context.drawImage(
+            sourceCanvas,
+            x,
+            y,
+            cropWidth,
+            cropHeight,
+            0,
+            0,
+            cropWidth,
+            cropHeight
+        );
+
+        return canvas;
+    }
+
     function createImageVariants(
         sourceCanvas
     ) {
         const baseCanvas =
             prepareBaseCanvas(
                 sourceCanvas
+            );
+
+        const centerCanvas =
+            createCenterCropCanvas(
+                baseCanvas,
+                0.9
             );
 
         return [
@@ -899,6 +1032,20 @@
                 canvas:
                     createThresholdCanvas(
                         baseCanvas
+                    )
+            },
+            {
+                name: "Zentrum 90% + Kontrast",
+                canvas:
+                    createGrayscaleContrastCanvas(
+                        centerCanvas
+                    )
+            },
+            {
+                name: "Zentrum 90% Schwarz/Weiß",
+                canvas:
+                    createThresholdCanvas(
+                        centerCanvas
                     )
             }
         ];
@@ -991,6 +1138,23 @@
             worker =
                 await workerPromise;
 
+            try {
+                await worker.setParameters({
+                    preserve_interword_spaces: "1",
+                    tessedit_pageseg_mode:
+                        global.Tesseract.PSM &&
+                        global.Tesseract.PSM.SPARSE_TEXT !== undefined
+                            ? global.Tesseract.PSM.SPARSE_TEXT
+                            : "11"
+                });
+            }
+            catch (error) {
+                console.warn(
+                    "OCR-Parameter konnten nicht vollständig gesetzt werden.",
+                    error
+                );
+            }
+
             return worker;
         }
         finally {
@@ -1071,7 +1235,8 @@
 
             const ocrData =
                 extractTrackingData(
-                    rawText
+                    rawText,
+                    qrData
                 );
 
             const missingFields =

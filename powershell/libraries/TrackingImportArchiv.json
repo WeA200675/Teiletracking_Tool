@@ -22,6 +22,12 @@
       "Required": true
     },
     {
+      "InternalName": "OriginalFileName",
+      "DisplayName": "Ursprünglicher Dateiname",
+      "Type": "Text",
+      "Required": true
+    },
+    {
       "InternalName": "PackageCreatedAt",
       "DisplayName": "Paket erstellt am",
       "Type": "DateTime",

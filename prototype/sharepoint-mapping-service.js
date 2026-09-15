@@ -447,7 +447,9 @@
             ImportedBy:
                 normalizedImportedBy,
             ImportedAt:
-                normalizedImportedAt
+                normalizedImportedAt,
+            ArchiveFileName:
+                `${verifiedPackage.batchId}.zip`
         };
 
         const recordPayloads =

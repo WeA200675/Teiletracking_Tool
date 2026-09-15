@@ -19,6 +19,8 @@ const elements = {
     dataStatus: document.getElementById("dataStatus"),
     derivat: document.getElementById("derivat"),
     iStufe: document.getElementById("iStufe"),
+    ats: document.getElementById("ats"),
+    yNummer: document.getElementById("yNummer"),
     newDerivatCode: document.getElementById("newDerivatCode"),
     newDerivatDescription: document.getElementById("newDerivatDescription"),
     addDerivatButton: document.getElementById("addDerivatButton"),
@@ -61,6 +63,9 @@ const elements = {
     resultSerialNumber: document.getElementById("resultSerialNumber"),
     resultDerivat: document.getElementById("resultDerivat"),
     resultIStufe: document.getElementById("resultIStufe"),
+    resultAts: document.getElementById("resultAts"),
+    resultYNummer: document.getElementById("resultYNummer"),
+    resultPartStatuses: document.getElementById("resultPartStatuses"),
     resultDeviceKey: document.getElementById("resultDeviceKey"),
     resultAssignmentKey: document.getElementById("resultAssignmentKey"),
     savedItems: document.getElementById("savedItems"),
@@ -69,6 +74,9 @@ const elements = {
     trackingStatusFilter: document.getElementById("trackingStatusFilter"),
     trackingDerivatFilter: document.getElementById("trackingDerivatFilter"),
     trackingIStufeFilter: document.getElementById("trackingIStufeFilter"),
+    trackingAtsFilter: document.getElementById("trackingAtsFilter"),
+    trackingYNummerFilter: document.getElementById("trackingYNummerFilter"),
+    trackingPartStatusFilter: document.getElementById("trackingPartStatusFilter"),
     trackingResultInfo: document.getElementById("trackingResultInfo"),
     resetTrackingFiltersButton: document.getElementById("resetTrackingFiltersButton"),
     trackingDetailOverlay: document.getElementById("trackingDetailOverlay"),
@@ -89,6 +97,7 @@ const elements = {
     qrScannerOverlay: document.getElementById("qrScannerOverlay"),
     qrScannerVideo: document.getElementById("qrScannerVideo"),
     qrScannerStatus: document.getElementById("qrScannerStatus"),
+    scannerDiagnostics: document.getElementById("scannerDiagnostics"),
     closeQrScannerButton: document.getElementById("closeQrScannerButton"),
     cancelQrScannerButton: document.getElementById("cancelQrScannerButton"),
     retryQrScannerButton: document.getElementById("retryQrScannerButton"),
@@ -140,53 +149,174 @@ function displayValue(value) {
     return normalizeText(value) || "–";
 }
 
-function parseTrackingString(inputString) {
-    if (!inputString || !inputString.trim()) {
+function normalizeTrackingKey(value) {
+    const compact = normalizeText(value)
+        .replace(/[^A-Z0-9]/g, "");
+
+    const aliases = {
+        PN: "PN",
+        PARTNO: "PN",
+        PARTNUMBER: "PN",
+        PARTNR: "PN",
+        TEILENUMMER: "PN",
+        TEILENR: "PN",
+        SN: "SN",
+        SERIAL: "SN",
+        SERIALNO: "SN",
+        SERIALNUMBER: "SN",
+        SERIENNUMMER: "SN",
+        SERIENNR: "SN",
+        HW: "HW",
+        HARDWARE: "HW",
+        HARDWAREVERSION: "HW",
+        HWVERSION: "HW",
+        SW: "SW",
+        SOFTWARE: "SW",
+        SOFTWAREVERSION: "SW",
+        SWVERSION: "SW"
+    };
+
+    return aliases[compact] || "";
+}
+
+function parseTrackingString(
+    inputString,
+    options = {}
+) {
+    const raw = String(inputString || "").trim();
+
+    if (!raw) {
         throw new Error("Tracking-String ist leer");
     }
 
-    const allowedKeys = new Set(["PN", "SN", "HW", "SW"]);
+    const allowUnknown = Boolean(
+        options.allowUnknown
+    );
     const data = {};
 
-    for (const rawSegment of inputString.split(";")) {
-        const segment = rawSegment.trim();
-
-        if (!segment) {
-            continue;
-        }
-
-        if (!segment.includes("=")) {
-            throw new Error(`Ungültiges Segment ohne '=': '${segment}'`);
-        }
-
-        const separatorIndex = segment.indexOf("=");
-        const key = normalizeText(segment.slice(0, separatorIndex));
-        const value = normalizeText(segment.slice(separatorIndex + 1));
+    function addValue(rawKey, rawValue) {
+        const key =
+            normalizeTrackingKey(rawKey);
 
         if (!key) {
-            throw new Error("Tracking-Schlüssel darf nicht leer sein");
+            if (allowUnknown) {
+                return;
+            }
+
+            throw new Error(
+                `Unbekannter Tracking-Schlüssel: '${normalizeText(rawKey)}'`
+            );
         }
 
-        if (!allowedKeys.has(key)) {
-            throw new Error(`Unbekannter Tracking-Schlüssel: '${key}'`);
-        }
+        const value =
+            normalizeText(rawValue);
 
-        if (Object.prototype.hasOwnProperty.call(data, key)) {
-            throw new Error(`Tracking-Schlüssel '${key}' ist mehrfach vorhanden`);
+        if (
+            Object.prototype.hasOwnProperty.call(
+                data,
+                key
+            )
+        ) {
+            if (data[key] === value) {
+                return;
+            }
+
+            throw new Error(
+                `Tracking-Schlüssel '${key}' ist mehrfach mit unterschiedlichen Werten vorhanden`
+            );
         }
 
         data[key] = value;
     }
 
+    if (
+        raw.startsWith("{") &&
+        raw.endsWith("}")
+    ) {
+        try {
+            const parsed = JSON.parse(raw);
+
+            for (
+                const [key, value] of
+                Object.entries(parsed)
+            ) {
+                if (
+                    value === null ||
+                    value === undefined ||
+                    typeof value === "object"
+                ) {
+                    continue;
+                }
+
+                addValue(key, value);
+            }
+        }
+        catch (error) {
+            if (!allowUnknown) {
+                throw new Error(
+                    `QR/Tracking-JSON ist ungültig: ${error.message}`
+                );
+            }
+        }
+    }
+
     if (Object.keys(data).length === 0) {
-        throw new Error("Tracking-String enthält keine verwertbaren Daten");
+        let normalizedRaw = raw;
+        const questionMark =
+            normalizedRaw.indexOf("?");
+
+        if (questionMark >= 0) {
+            normalizedRaw =
+                normalizedRaw.slice(
+                    questionMark + 1
+                );
+        }
+
+        const segments =
+            normalizedRaw
+                .replace(/\r/g, "\n")
+                .split(/[;\n&|]+/)
+                .map(item => item.trim())
+                .filter(Boolean);
+
+        for (const segment of segments) {
+            const match =
+                segment.match(
+                    /^\s*([^:=]+?)\s*[:=]\s*(.*?)\s*$/
+                );
+
+            if (!match) {
+                if (allowUnknown) {
+                    continue;
+                }
+
+                throw new Error(
+                    `Ungültiges Segment ohne '=' oder ':': '${segment}'`
+                );
+            }
+
+            addValue(
+                match[1],
+                match[2]
+            );
+        }
+    }
+
+    if (Object.keys(data).length === 0) {
+        throw new Error(
+            "QR-Code wurde technisch gelesen, enthält aber noch keine unterstützten PN/SN/HW/SW-Felder."
+        );
     }
 
     return {
-        partNumber: normalizeText(data.PN),
-        serialNumber: normalizeText(data.SN),
-        hardware: normalizeText(data.HW),
-        software: normalizeText(data.SW)
+        partNumber:
+            normalizeText(data.PN),
+        serialNumber:
+            normalizeText(data.SN),
+        hardware:
+            normalizeText(data.HW),
+        software:
+            normalizeText(data.SW)
     };
 }
 
@@ -197,13 +327,37 @@ function getDeviceKey(partNumber, serialNumber) {
     ].join("|");
 }
 
-function getAssignmentKey(partNumber, serialNumber, derivat, iStufe) {
-    return [
+function getAssignmentKey(
+    partNumber,
+    serialNumber,
+    derivat,
+    iStufe,
+    ats = "",
+    yNummer = ""
+) {
+    const base = [
         normalizeText(partNumber),
         normalizeText(serialNumber),
         normalizeText(derivat),
         normalizeText(iStufe)
-    ].join("|");
+    ];
+
+    const normalizedAts =
+        normalizeText(ats);
+    const normalizedYNummer =
+        normalizeText(yNummer);
+
+    if (
+        normalizedAts ||
+        normalizedYNummer
+    ) {
+        base.push(
+            normalizedAts,
+            normalizedYNummer
+        );
+    }
+
+    return base.join("|");
 }
 
 function getMismatchFields(label, qr) {
@@ -228,7 +382,12 @@ function getMismatchFields(label, qr) {
     return mismatchFields;
 }
 
-function validateRequiredFields(label, qr, derivat, iStufe) {
+function validateRequiredFields(
+    label,
+    qr,
+    derivat,
+    iStufe
+) {
     const errors = [];
 
     if (!label.partNumber) {
@@ -256,7 +415,9 @@ function validateRequiredFields(label, qr, derivat, iStufe) {
     }
 
     if (errors.length > 0) {
-        throw new Error(errors.join("; "));
+        throw new Error(
+            errors.join("; ")
+        );
     }
 }
 
@@ -289,47 +450,93 @@ function getDuplicateStatus(deviceKey, assignmentKey) {
     return "NEW";
 }
 
-function buildRecord(label, qr, derivat, iStufe) {
-    const normalizedDerivat = normalizeText(derivat);
-    const normalizedIStufe = normalizeText(iStufe);
-    const labelPartNumber = normalizeText(label.partNumber);
-    const qrPartNumber = normalizeText(qr.partNumber);
-    const labelSerialNumber = normalizeText(label.serialNumber);
-    const qrSerialNumber = normalizeText(qr.serialNumber);
-    const labelHardware = normalizeText(label.hardware);
-    const qrHardware = normalizeText(qr.hardware);
-    const labelSoftware = normalizeText(label.software);
-    const qrSoftware = normalizeText(qr.software);
+function buildRecord(
+    label,
+    qr,
+    derivat,
+    iStufe,
+    ats = "",
+    yNummer = "",
+    partStatuses = []
+) {
+    const normalizedDerivat =
+        normalizeText(derivat);
+    const normalizedIStufe =
+        normalizeText(iStufe);
+    const normalizedAts =
+        normalizeText(ats);
+    const normalizedYNummer =
+        normalizeText(yNummer);
 
-    const deviceKey = getDeviceKey(
-        labelPartNumber,
-        labelSerialNumber
-    );
+    const normalizedStatuses =
+        TeiletrackingFeatureService
+            .normalizeStatusArray(
+                partStatuses
+            );
 
-    const assignmentKey = getAssignmentKey(
-        labelPartNumber,
-        labelSerialNumber,
-        normalizedDerivat,
-        normalizedIStufe
-    );
+    const labelPartNumber =
+        normalizeText(label.partNumber);
+    const qrPartNumber =
+        normalizeText(qr.partNumber);
+    const labelSerialNumber =
+        normalizeText(label.serialNumber);
+    const qrSerialNumber =
+        normalizeText(qr.serialNumber);
+    const labelHardware =
+        normalizeText(label.hardware);
+    const qrHardware =
+        normalizeText(qr.hardware);
+    const labelSoftware =
+        normalizeText(label.software);
+    const qrSoftware =
+        normalizeText(qr.software);
 
-    const duplicateStatus = getDuplicateStatus(
-        deviceKey,
-        assignmentKey
-    );
+    const deviceKey =
+        getDeviceKey(
+            labelPartNumber,
+            labelSerialNumber
+        );
 
-    const mismatchFields = getMismatchFields(label, qr);
+    const assignmentKey =
+        getAssignmentKey(
+            labelPartNumber,
+            labelSerialNumber,
+            normalizedDerivat,
+            normalizedIStufe,
+            normalizedAts,
+            normalizedYNummer
+        );
+
+    const duplicateStatus =
+        getDuplicateStatus(
+            deviceKey,
+            assignmentKey
+        );
+
+    const mismatchFields =
+        getMismatchFields(
+            label,
+            qr
+        );
 
     let validationStatus = "OK";
 
     if (mismatchFields.length > 0) {
-        validationStatus = "LABEL_QR_MISMATCH";
+        validationStatus =
+            "LABEL_QR_MISMATCH";
     }
-    else if (duplicateStatus === "DUPLICATE") {
-        validationStatus = "DUPLICATE";
+    else if (
+        duplicateStatus === "DUPLICATE"
+    ) {
+        validationStatus =
+            "DUPLICATE";
     }
-    else if (duplicateStatus === "DOUBLE_DERIVATIVE") {
-        validationStatus = "DOUBLE_DERIVATIVE";
+    else if (
+        duplicateStatus ===
+        "DOUBLE_DERIVATIVE"
+    ) {
+        validationStatus =
+            "DOUBLE_DERIVATIVE";
     }
 
     return {
@@ -341,6 +548,11 @@ function buildRecord(label, qr, derivat, iStufe) {
         QRSerialNumber: qrSerialNumber,
         Derivat: normalizedDerivat,
         IStufe: normalizedIStufe,
+        ATS: normalizedAts,
+        YNummer: normalizedYNummer,
+        PartStatuses: normalizedStatuses,
+        Teilestatus:
+            normalizedStatuses.join(";"),
         LabelHardware: labelHardware,
         QRHardware: qrHardware,
         LabelSoftware: labelSoftware,
@@ -349,7 +561,9 @@ function buildRecord(label, qr, derivat, iStufe) {
         AssignmentKey: assignmentKey,
         DuplicateStatus: duplicateStatus,
         ValidationStatus: validationStatus,
-        DoppelDerivat: duplicateStatus === "DOUBLE_DERIVATIVE",
+        DoppelDerivat:
+            duplicateStatus ===
+            "DOUBLE_DERIVATIVE",
         MismatchFields: mismatchFields
     };
 }
@@ -543,6 +757,20 @@ function renderRecord(record) {
     elements.resultSerialNumber.textContent = record.SerialNumber;
     elements.resultDerivat.textContent = record.Derivat;
     elements.resultIStufe.textContent = record.IStufe;
+    elements.resultAts.textContent =
+        displayValue(record.ATS);
+    elements.resultYNummer.textContent =
+        displayValue(record.YNummer);
+
+    elements.resultPartStatuses.innerHTML = "";
+    elements.resultPartStatuses.appendChild(
+        TeiletrackingFeatureService
+            .createStatusChips(
+                record.PartStatuses ||
+                record.Teilestatus
+            )
+    );
+
     elements.resultDeviceKey.textContent = record.DeviceKey;
     elements.resultAssignmentKey.textContent = record.AssignmentKey;
 
@@ -569,6 +797,9 @@ function renderError(error) {
     elements.resultSerialNumber.textContent = "–";
     elements.resultDerivat.textContent = "–";
     elements.resultIStufe.textContent = "–";
+    elements.resultAts.textContent = "–";
+    elements.resultYNummer.textContent = "–";
+    elements.resultPartStatuses.innerHTML = "–";
     elements.resultDeviceKey.textContent = "–";
     elements.resultAssignmentKey.textContent = "–";
 }
@@ -636,63 +867,122 @@ function normalizeLocalMasterData(
 function normalizeStoredTrackingRecord(item) {
     const mismatchFields =
         Array.isArray(item.MismatchFields)
-            ? item.MismatchFields.map(normalizeDescription)
+            ? item.MismatchFields
+                .map(normalizeDescription)
             : [];
 
-    const partNumber = normalizeText(
-        item.PartNumber || item.LabelPartNumber
-    );
+    const partNumber =
+        normalizeText(
+            item.PartNumber ||
+            item.LabelPartNumber
+        );
 
-    const serialNumber = normalizeText(
-        item.SerialNumber || item.LabelSerialNumber
-    );
+    const serialNumber =
+        normalizeText(
+            item.SerialNumber ||
+            item.LabelSerialNumber
+        );
 
-    const derivat = normalizeText(item.Derivat);
-    const iStufe = normalizeText(item.IStufe);
+    const derivat =
+        normalizeText(item.Derivat);
+    const iStufe =
+        normalizeText(item.IStufe);
+    const ats =
+        normalizeText(item.ATS);
+    const yNummer =
+        normalizeText(item.YNummer);
+
+    const partStatuses =
+        TeiletrackingFeatureService
+            .normalizeStatusArray(
+                item.PartStatuses ||
+                item.Teilestatus
+            );
 
     return {
         ...item,
         PartNumber: partNumber,
         SerialNumber: serialNumber,
-        LabelPartNumber: normalizeText(
-            item.LabelPartNumber || partNumber
-        ),
-        QRPartNumber: normalizeText(
-            item.QRPartNumber || partNumber
-        ),
-        LabelSerialNumber: normalizeText(
-            item.LabelSerialNumber || serialNumber
-        ),
-        QRSerialNumber: normalizeText(
-            item.QRSerialNumber || serialNumber
-        ),
+        LabelPartNumber:
+            normalizeText(
+                item.LabelPartNumber ||
+                partNumber
+            ),
+        QRPartNumber:
+            normalizeText(
+                item.QRPartNumber ||
+                partNumber
+            ),
+        LabelSerialNumber:
+            normalizeText(
+                item.LabelSerialNumber ||
+                serialNumber
+            ),
+        QRSerialNumber:
+            normalizeText(
+                item.QRSerialNumber ||
+                serialNumber
+            ),
         Derivat: derivat,
         IStufe: iStufe,
-        LabelHardware: normalizeText(item.LabelHardware),
-        QRHardware: normalizeText(item.QRHardware),
-        LabelSoftware: normalizeText(item.LabelSoftware),
-        QRSoftware: normalizeText(item.QRSoftware),
-        DeviceKey: normalizeText(
-            item.DeviceKey || getDeviceKey(partNumber, serialNumber)
-        ),
-        AssignmentKey: normalizeText(
-            item.AssignmentKey ||
-            getAssignmentKey(
-                partNumber,
-                serialNumber,
-                derivat,
-                iStufe
-            )
-        ),
-        DuplicateStatus: normalizeText(
-            item.DuplicateStatus || "NEW"
-        ),
-        ValidationStatus: normalizeText(
-            item.ValidationStatus || "OK"
-        ),
-        DoppelDerivat: Boolean(item.DoppelDerivat),
-        MismatchFields: mismatchFields,
-        SavedAt: item.SavedAt || null,
+        ATS: ats,
+        YNummer: yNummer,
+        PartStatuses:
+            partStatuses,
+        Teilestatus:
+            partStatuses.join(";"),
+        LabelHardware:
+            normalizeText(
+                item.LabelHardware
+            ),
+        QRHardware:
+            normalizeText(
+                item.QRHardware
+            ),
+        LabelSoftware:
+            normalizeText(
+                item.LabelSoftware
+            ),
+        QRSoftware:
+            normalizeText(
+                item.QRSoftware
+            ),
+        DeviceKey:
+            normalizeText(
+                item.DeviceKey ||
+                getDeviceKey(
+                    partNumber,
+                    serialNumber
+                )
+            ),
+        AssignmentKey:
+            normalizeText(
+                item.AssignmentKey ||
+                getAssignmentKey(
+                    partNumber,
+                    serialNumber,
+                    derivat,
+                    iStufe,
+                    ats,
+                    yNummer
+                )
+            ),
+        DuplicateStatus:
+            normalizeText(
+                item.DuplicateStatus ||
+                "NEW"
+            ),
+        ValidationStatus:
+            normalizeText(
+                item.ValidationStatus ||
+                "OK"
+            ),
+        DoppelDerivat:
+            Boolean(item.DoppelDerivat),
+        MismatchFields:
+            mismatchFields,
+        SavedAt:
+            item.SavedAt || null,
         CapturedAt:
             item.CapturedAt ||
             item.SavedAt ||
@@ -709,6 +999,14 @@ function normalizeStoredTrackingRecord(item) {
             normalizeDescription(
                 item.SourceOrigin ||
                 "LEGACY_LOCAL"
+            ),
+        TransferBatchId:
+            normalizeDescription(
+                item.TransferBatchId
+            ),
+        TransferSourceRecordId:
+            normalizeDescription(
+                item.TransferSourceRecordId
             ),
         LocalId:
             item.LocalId ||
@@ -1074,10 +1372,17 @@ function updateDataStatus() {
         TeiletrackingDataService
             .getProviderInfo();
 
+    const featureStats =
+        TeiletrackingFeatureService
+            .getStats();
+
     elements.dataStatus.textContent =
         `${providerInfo.displayName} · ` +
         `${activeDerivate} aktive Derivate · ` +
         `${activeIStufen} aktive I-Stufen · ` +
+        `${featureStats.activeATS} aktive ATS · ` +
+        `${featureStats.activeYNumbers} aktive Y-Nummern · ` +
+        `${featureStats.activeStatuses} Statuswerte · ` +
         `${state.initialTrackingData.length} Basis-Teile · ` +
         `${state.savedItems.length} gespeichert`;
 }
@@ -1623,7 +1928,8 @@ function getQrDataForOcrPreview() {
 
     try {
         return parseTrackingString(
-            qrText
+            qrText,
+            { allowUnknown: true }
         );
     }
     catch {
@@ -1886,7 +2192,8 @@ async function recognizeVisibleLabelText(
             if (qrText) {
                 qrData =
                     parseTrackingString(
-                        qrText
+                        qrText,
+                        { allowUnknown: true }
                     );
             }
         }
@@ -2058,6 +2365,37 @@ async function captureLabelPhoto() {
                 context
             );
 
+        const diagnostics =
+            TeiletrackingScannerService
+                .getLastDiagnostics();
+
+        if (
+            diagnostics &&
+            elements.scannerDiagnostics
+        ) {
+            const quality =
+                diagnostics.quality || {};
+
+            const warnings =
+                Array.isArray(
+                    quality.warnings
+                )
+                    ? quality.warnings
+                    : [];
+
+            elements.scannerDiagnostics.textContent =
+                `Bild ${diagnostics.resolution || `${canvas.width}×${canvas.height}`} · ` +
+                `Helligkeit ${Math.round(Number(quality.brightness || 0))} · ` +
+                `Schärfe ${Math.round(Number(quality.edgeScore || 0))} · ` +
+                `QR-Versuche ${Array.isArray(diagnostics.qrAttempts) ? diagnostics.qrAttempts.length : 0}` +
+                (diagnostics.qrFoundBy
+                    ? ` · erkannt mit ${diagnostics.qrFoundBy}`
+                    : "") +
+                (warnings.length > 0
+                    ? ` · Hinweis: ${warnings.join(" ")}`
+                    : "");
+        }
+
         let qrReadable = false;
         let qrFailureReason = "";
 
@@ -2074,7 +2412,8 @@ async function captureLabelPhoto() {
 
             try {
                 parseTrackingString(
-                    qrText
+                    qrText,
+                    { allowUnknown: true }
                 );
 
                 qrReadable = true;
@@ -2220,8 +2559,13 @@ async function startQrScannerCamera() {
         state.qrScannerRunning = true;
 
         setQrScannerStatus(
-            `Kamera aktiv (${scanner.displayName}). Richte das komplette Label aus und drücke dann „Label aufnehmen“.`
+            `Kamera aktiv (${scanner.displayName}) · ${scanner.width}×${scanner.height} · Fokus: ${scanner.focusMode}. Richte das Label formatfüllend aus; QR-Code und Text müssen scharf sichtbar sein.`
         );
+
+        if (elements.scannerDiagnostics) {
+            elements.scannerDiagnostics.textContent =
+                `Kamera: ${scanner.width}×${scanner.height} · QR-Engine: ${scanner.displayName}`;
+        }
     }
     catch (error) {
         stopQrScannerCamera();
@@ -2283,6 +2627,29 @@ function getTrackingExportRecords() {
         QRSerialNumber: normalizeText(record.QRSerialNumber),
         Derivat: normalizeText(record.Derivat),
         IStufe: normalizeText(record.IStufe),
+        ATS: normalizeText(record.ATS),
+        YNummer: normalizeText(record.YNummer),
+        PartStatuses:
+            TeiletrackingFeatureService
+                .normalizeStatusArray(
+                    record.PartStatuses ||
+                    record.Teilestatus
+                ),
+        Teilestatus:
+            TeiletrackingFeatureService
+                .normalizeStatusArray(
+                    record.PartStatuses ||
+                    record.Teilestatus
+                )
+                .join(";"),
+        TransferBatchId:
+            normalizeDescription(
+                record.TransferBatchId
+            ),
+        TransferSourceRecordId:
+            normalizeDescription(
+                record.TransferSourceRecordId
+            ),
         LabelHardware: normalizeText(record.LabelHardware),
         QRHardware: normalizeText(record.QRHardware),
         LabelSoftware: normalizeText(record.LabelSoftware),
@@ -2505,6 +2872,11 @@ function exportTrackingCsv() {
         "QRSerialNumber",
         "Derivat",
         "IStufe",
+        "ATS",
+        "YNummer",
+        "Teilestatus",
+        "TransferBatchId",
+        "TransferSourceRecordId",
         "LabelHardware",
         "QRHardware",
         "LabelSoftware",
@@ -2634,7 +3006,9 @@ function validateImportedRecord(record, index) {
             partNumber,
             serialNumber,
             derivat,
-            iStufe
+            iStufe,
+            record.ATS,
+            record.YNummer
         ),
         LocalId: createLocalRecordId(),
         SavedAt:
@@ -2847,24 +3221,50 @@ function getTrackingDisplayItems() {
 }
 
 function getFilteredTrackingItems() {
-    const search = normalizeText(
-        elements.trackingSearch.value
-    );
+    const search =
+        normalizeText(
+            elements.trackingSearch.value
+        );
 
-    const status = normalizeText(
-        elements.trackingStatusFilter.value
-    );
+    const status =
+        normalizeText(
+            elements.trackingStatusFilter.value
+        );
 
-    const derivat = normalizeText(
-        elements.trackingDerivatFilter.value
-    );
+    const derivat =
+        normalizeText(
+            elements.trackingDerivatFilter.value
+        );
 
-    const iStufe = normalizeText(
-        elements.trackingIStufeFilter.value
-    );
+    const iStufe =
+        normalizeText(
+            elements.trackingIStufeFilter.value
+        );
 
-    return getTrackingDisplayItems().filter(
-        record => {
+    const ats =
+        normalizeText(
+            elements.trackingAtsFilter?.value
+        );
+
+    const yNummer =
+        normalizeText(
+            elements.trackingYNummerFilter?.value
+        );
+
+    const partStatus =
+        normalizeText(
+            elements.trackingPartStatusFilter?.value
+        );
+
+    return getTrackingDisplayItems()
+        .filter(record => {
+            const recordStatuses =
+                TeiletrackingFeatureService
+                    .normalizeStatusArray(
+                        record.PartStatuses ||
+                        record.Teilestatus
+                    );
+
             const haystack = [
                 record.PartNumber,
                 record.SerialNumber,
@@ -2876,39 +3276,77 @@ function getFilteredTrackingItems() {
                 record.AssignmentKey,
                 record.Derivat,
                 record.IStufe,
+                record.ATS,
+                record.YNummer,
+                recordStatuses.join(" "),
                 record.ValidationStatus
             ]
                 .map(normalizeText)
                 .join(" ");
 
-            if (search && !haystack.includes(search)) {
+            if (
+                search &&
+                !haystack.includes(search)
+            ) {
                 return false;
             }
 
             if (
                 status &&
-                getRecordValidationStatus(record) !== status
+                getRecordValidationStatus(
+                    record
+                ) !== status
             ) {
                 return false;
             }
 
             if (
                 derivat &&
-                normalizeText(record.Derivat) !== derivat
+                normalizeText(
+                    record.Derivat
+                ) !== derivat
             ) {
                 return false;
             }
 
             if (
                 iStufe &&
-                normalizeText(record.IStufe) !== iStufe
+                normalizeText(
+                    record.IStufe
+                ) !== iStufe
+            ) {
+                return false;
+            }
+
+            if (
+                ats &&
+                normalizeText(
+                    record.ATS
+                ) !== ats
+            ) {
+                return false;
+            }
+
+            if (
+                yNummer &&
+                normalizeText(
+                    record.YNummer
+                ) !== yNummer
+            ) {
+                return false;
+            }
+
+            if (
+                partStatus &&
+                !recordStatuses.includes(
+                    partStatus
+                )
             ) {
                 return false;
             }
 
             return true;
-        }
-    );
+        });
 }
 
 function refreshTrackingFilterOptions() {
@@ -2981,6 +3419,10 @@ function refreshTrackingFilterOptions() {
         "Alle I-Stufen",
         false
     );
+    TeiletrackingFeatureService
+        .refreshTrackingFilters(
+            displayItems
+        );
 }
 
 function createTrackingDetail(label, value) {
@@ -3103,7 +3545,9 @@ function openTrackingDetail(record) {
             partNumber,
             serialNumber,
             record.Derivat,
-            record.IStufe
+            record.IStufe,
+            record.ATS,
+            record.YNummer
         );
 
     const deviceKey = normalizeText(record.DeviceKey) ||
@@ -3133,6 +3577,18 @@ function openTrackingDetail(record) {
         createDetailField("SerialNumber", serialNumber),
         createDetailField("Derivat", record.Derivat),
         createDetailField("I-Stufe", record.IStufe),
+        createDetailField("ATS", record.ATS),
+        createDetailField("Y-Nummer", record.YNummer),
+        createDetailField(
+            "Teile-Status",
+            TeiletrackingFeatureService
+                .normalizeStatusArray(
+                    record.PartStatuses ||
+                    record.Teilestatus
+                )
+                .join(", "),
+            false
+        ),
         createDetailField("DeviceKey", deviceKey),
         createDetailField("AssignmentKey", assignmentKey)
     );
@@ -3262,6 +3718,14 @@ function openTrackingDetail(record) {
             "SourceOrigin",
             record.SourceOrigin || "–",
             false
+        ),
+        createDetailField(
+            "TransferBatchId",
+            record.TransferBatchId || "–"
+        ),
+        createDetailField(
+            "TransferSourceRecordId",
+            record.TransferSourceRecordId || "–"
         )
     );
 
@@ -3307,7 +3771,9 @@ function createTrackingItem(record) {
             record.PartNumber,
             record.SerialNumber,
             record.Derivat,
-            record.IStufe
+            record.IStufe,
+            record.ATS,
+            record.YNummer
         );
 
     const source = document.createElement("span");
@@ -3346,8 +3812,23 @@ function createTrackingItem(record) {
         createTrackingDetail("PartNumber", record.PartNumber),
         createTrackingDetail("SerialNumber", record.SerialNumber),
         createTrackingDetail("Derivat", record.Derivat),
-        createTrackingDetail("I-Stufe", record.IStufe)
+        createTrackingDetail("I-Stufe", record.IStufe),
+        createTrackingDetail("ATS", record.ATS),
+        createTrackingDetail("Y-Nummer", record.YNummer)
     );
+
+    const partStatusChips =
+        TeiletrackingFeatureService
+            .createStatusChips(
+                record.PartStatuses ||
+                record.Teilestatus
+            );
+
+    if (partStatusChips.childNodes.length > 0) {
+        details.appendChild(
+            partStatusChips
+        );
+    }
 
     if (isLocal && record.SavedAt) {
         const savedAt = document.createElement("p");
@@ -3443,6 +3924,9 @@ function renderSavedItems() {
                 ? "Noch keine Datensätze vorhanden."
                 : "Keine Datensätze entsprechen den aktuellen Filtern.";
 
+        TeiletrackingFeatureService
+            .notifyTrackingChanged();
+
         return;
     }
 
@@ -3469,6 +3953,9 @@ function renderSavedItems() {
             createTrackingItem(record)
         );
     }
+
+    TeiletrackingFeatureService
+        .notifyTrackingChanged();
 }
 
 async function deleteLocalTrackingRecord(localId) {
@@ -3525,26 +4012,57 @@ function resetTrackingFilters() {
     elements.trackingDerivatFilter.value = "";
     elements.trackingIStufeFilter.value = "";
 
+    if (elements.trackingAtsFilter) {
+        elements.trackingAtsFilter.value = "";
+    }
+
+    if (elements.trackingYNummerFilter) {
+        elements.trackingYNummerFilter.value = "";
+    }
+
+    if (elements.trackingPartStatusFilter) {
+        elements.trackingPartStatusFilter.value = "";
+    }
+
     renderSavedItems();
 }
 
 function checkCurrentInput() {
     try {
-        const label = parseTrackingString(
-            elements.labelInput.value
-        );
+        const label =
+            parseTrackingString(
+                elements.labelInput.value
+            );
 
-        const qr = parseTrackingString(
-            elements.qrInput.value
-        );
+        const qr =
+            parseTrackingString(
+                elements.qrInput.value,
+                {
+                    allowUnknown: true
+                }
+            );
 
-        const derivat = normalizeText(
-            elements.derivat.value
-        );
+        const derivat =
+            normalizeText(
+                elements.derivat.value
+            );
 
-        const iStufe = normalizeText(
-            elements.iStufe.value
-        );
+        const iStufe =
+            normalizeText(
+                elements.iStufe.value
+            );
+
+        const ats =
+            TeiletrackingFeatureService
+                .getSelectedAts();
+
+        const yNummer =
+            TeiletrackingFeatureService
+                .getSelectedYNumber();
+
+        const partStatuses =
+            TeiletrackingFeatureService
+                .getSelectedStatuses();
 
         validateRequiredFields(
             label,
@@ -3553,14 +4071,19 @@ function checkCurrentInput() {
             iStufe
         );
 
-        const record = buildRecord(
-            label,
-            qr,
-            derivat,
-            iStufe
-        );
+        const record =
+            buildRecord(
+                label,
+                qr,
+                derivat,
+                iStufe,
+                ats,
+                yNummer,
+                partStatuses
+            );
 
-        state.currentRecord = record;
+        state.currentRecord =
+            record;
 
         renderRecord(record);
     }
@@ -3653,11 +4176,21 @@ function resetForm() {
     elements.iStufe.value = "";
     elements.labelInput.value = "";
     elements.qrInput.value = "";
+
+    TeiletrackingFeatureService
+        .resetAssignmentFields();
+
     setQrScanResult("");
     removeCapturedLabel();
 
-    elements.resultCard.classList.add("hidden");
-    elements.saveButton.disabled = true;
+    if (elements.scannerDiagnostics) {
+        elements.scannerDiagnostics.textContent = "";
+    }
+
+    elements.resultCard
+        .classList.add("hidden");
+    elements.saveButton.disabled =
+        true;
 
     clearComparison();
 
@@ -3704,6 +4237,22 @@ async function loadData() {
                 : [];
 
         rebuildMasterData();
+
+        await TeiletrackingFeatureService
+            .initialize({
+                state,
+                getTrackingDisplayItems,
+                saveTrackingData,
+                normalizeStoredTrackingRecord,
+                getAssignmentKey,
+                renderSavedItems,
+                refreshTrackingFilterOptions,
+                updateDataStatus,
+                dataService:
+                    TeiletrackingDataService,
+                migrationService:
+                    TeiletrackingMigrationService
+            });
 
         refreshMasterDataUi();
         refreshTrackingFilterOptions();
@@ -3799,6 +4348,21 @@ elements.trackingDerivatFilter.addEventListener(
 );
 
 elements.trackingIStufeFilter.addEventListener(
+    "change",
+    renderSavedItems
+);
+
+elements.trackingAtsFilter.addEventListener(
+    "change",
+    renderSavedItems
+);
+
+elements.trackingYNummerFilter.addEventListener(
+    "change",
+    renderSavedItems
+);
+
+elements.trackingPartStatusFilter.addEventListener(
     "change",
     renderSavedItems
 );

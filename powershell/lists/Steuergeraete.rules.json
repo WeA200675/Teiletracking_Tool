@@ -12,7 +12,10 @@
     "ImportBatchId",
     "SourceDeviceId",
     "CapturedAt",
-    "RecordHash"
+    "RecordHash",
+    "ATS",
+    "YNummer",
+    "TransferBatchId"
   ],
   "Unique": [
     "AssignmentKey",
