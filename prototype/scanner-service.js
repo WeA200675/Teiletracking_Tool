@@ -2,13 +2,30 @@
 
 (function initializeScannerService(global) {
     let stream = null;
+    let activeTrack = null;
     let detector = null;
-    let mode = null;
+    let engineMode = "UNINITIALIZED";
     let lastDiagnostics = null;
+    let liveTimer = null;
+    let liveBusy = false;
+    let lastLiveQrText = "";
+    let lastLiveQrAt = null;
+    let pendingHighResolutionCapture = null;
+    let bypassNextCaptureClick = false;
+    let zxingLoadPromise = null;
+
+    const ZXING_SCRIPT_URL =
+        "https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.4/dist/iife/reader/index.js";
+
+    const LIVE_SCAN_INTERVAL_MS = 420;
+    const LIVE_SCAN_MAX_WIDTH = 960;
 
     function delay(milliseconds) {
         return new Promise(resolve => {
-            global.setTimeout(resolve, milliseconds);
+            global.setTimeout(
+                resolve,
+                milliseconds
+            );
         });
     }
 
@@ -65,9 +82,137 @@
         }
     }
 
+    function loadScript(url) {
+        return new Promise((resolve, reject) => {
+            const existing =
+                Array.from(
+                    document.scripts
+                ).find(
+                    script => script.src === url
+                );
+
+            if (existing) {
+                if (
+                    global.ZXingWASM &&
+                    typeof global.ZXingWASM.readBarcodes ===
+                    "function"
+                ) {
+                    resolve();
+                    return;
+                }
+
+                existing.addEventListener(
+                    "load",
+                    resolve,
+                    { once: true }
+                );
+                existing.addEventListener(
+                    "error",
+                    () => reject(
+                        new Error(
+                            "ZXing-WASM konnte nicht geladen werden."
+                        )
+                    ),
+                    { once: true }
+                );
+                return;
+            }
+
+            const script =
+                document.createElement(
+                    "script"
+                );
+
+            script.src = url;
+            script.async = true;
+            script.crossOrigin = "anonymous";
+
+            script.addEventListener(
+                "load",
+                resolve,
+                { once: true }
+            );
+
+            script.addEventListener(
+                "error",
+                () => reject(
+                    new Error(
+                        "ZXing-WASM konnte nicht geladen werden."
+                    )
+                ),
+                { once: true }
+            );
+
+            document.head.appendChild(script);
+        });
+    }
+
+    async function ensureZxingWasm() {
+        if (
+            global.ZXingWASM &&
+            typeof global.ZXingWASM.readBarcodes ===
+            "function"
+        ) {
+            return true;
+        }
+
+        if (!zxingLoadPromise) {
+            zxingLoadPromise =
+                loadScript(
+                    ZXING_SCRIPT_URL
+                );
+        }
+
+        try {
+            await zxingLoadPromise;
+
+            if (
+                !global.ZXingWASM ||
+                typeof global.ZXingWASM.readBarcodes !==
+                "function"
+            ) {
+                return false;
+            }
+
+            if (
+                typeof global.ZXingWASM.prepareZXingModule ===
+                "function"
+            ) {
+                try {
+                    await global.ZXingWASM
+                        .prepareZXingModule({
+                            fireImmediately: true
+                        });
+                }
+                catch (error) {
+                    console.warn(
+                        "ZXing-WASM konnte nicht vorab initialisiert werden. Der Scan versucht es erneut.",
+                        error
+                    );
+                }
+            }
+
+            return true;
+        }
+        catch (error) {
+            console.warn(
+                "ZXing-WASM konnte nicht geladen werden. Browser-Fallback wird verwendet.",
+                error
+            );
+
+            zxingLoadPromise = null;
+            return false;
+        }
+    }
+
     async function initializeQrEngine() {
         detector = null;
-        mode = null;
+        engineMode = "UNAVAILABLE";
+
+        if (await ensureZxingWasm()) {
+            engineMode = "ZXING_WASM";
+            return engineMode;
+        }
 
         if ("BarcodeDetector" in global) {
             try {
@@ -78,327 +223,371 @@
                     "function"
                 ) {
                     const supportedFormats =
-                        await global.BarcodeDetector.getSupportedFormats();
+                        await global.BarcodeDetector
+                            .getSupportedFormats();
 
                     supportsQr =
-                        supportedFormats.includes("qr_code");
+                        supportedFormats
+                            .includes(
+                                "qr_code"
+                            );
                 }
 
                 if (supportsQr) {
                     detector =
                         new global.BarcodeDetector({
-                            formats: ["qr_code"]
+                            formats: [
+                                "qr_code"
+                            ]
                         });
 
-                    mode = "BARCODE_DETECTOR";
-                    return mode;
+                    engineMode =
+                        "BARCODE_DETECTOR";
+
+                    return engineMode;
                 }
             }
             catch (error) {
                 console.warn(
-                    "Native BarcodeDetector-Erkennung ist nicht verfügbar. jsQR-Fallback wird verwendet.",
+                    "Native BarcodeDetector-Erkennung ist nicht verfügbar.",
                     error
                 );
             }
         }
 
         if (typeof global.jsQR === "function") {
-            mode = "JSQR";
-            return mode;
+            engineMode = "JSQR";
+            return engineMode;
         }
 
         throw new Error(
-            "Die QR-Erkennung ist in diesem Browser nicht verfügbar und der jsQR-Fallback konnte nicht geladen werden. Bitte Internetverbindung prüfen und die Seite neu laden."
+            "Keine QR-Engine verfügbar. ZXing-WASM, BarcodeDetector und jsQR konnten nicht geladen werden."
         );
     }
 
-    async function applyBestCameraConstraints(track) {
+    async function applyBestCameraConstraints(
+        track
+    ) {
         if (!track) {
             return;
         }
 
         try {
             const capabilities =
-                typeof track.getCapabilities === "function"
+                typeof track.getCapabilities ===
+                "function"
                     ? track.getCapabilities()
                     : {};
 
             const advanced = {};
 
             if (
-                Array.isArray(capabilities.focusMode) &&
-                capabilities.focusMode.includes("continuous")
+                Array.isArray(
+                    capabilities.focusMode
+                ) &&
+                capabilities.focusMode
+                    .includes(
+                        "continuous"
+                    )
             ) {
-                advanced.focusMode = "continuous";
+                advanced.focusMode =
+                    "continuous";
             }
 
             if (
                 capabilities.zoom &&
-                Number.isFinite(capabilities.zoom.min)
-            ) {
-                const min = Number(capabilities.zoom.min);
-                const max = Number(capabilities.zoom.max);
-                const preferred = Math.min(
-                    max,
-                    Math.max(
-                        min,
-                        min + (max - min) * 0.12
+                Number.isFinite(
+                    Number(
+                        capabilities.zoom.min
                     )
-                );
+                )
+            ) {
+                const min =
+                    Number(
+                        capabilities.zoom.min
+                    );
+                const max =
+                    Number(
+                        capabilities.zoom.max
+                    );
 
-                if (Number.isFinite(preferred)) {
-                    advanced.zoom = preferred;
+                const preferred =
+                    Math.min(
+                        max,
+                        Math.max(
+                            min,
+                            min +
+                            (
+                                max - min
+                            ) * 0.08
+                        )
+                    );
+
+                if (
+                    Number.isFinite(
+                        preferred
+                    )
+                ) {
+                    advanced.zoom =
+                        preferred;
                 }
             }
 
-            if (Object.keys(advanced).length > 0) {
+            if (
+                Object.keys(
+                    advanced
+                ).length > 0
+            ) {
                 await track.applyConstraints({
-                    advanced: [advanced]
+                    advanced: [
+                        advanced
+                    ]
                 });
             }
         }
         catch (error) {
             console.warn(
-                "Optimierte Kameraeinstellungen konnten nicht angewendet werden. Standardwerte werden verwendet.",
+                "Optimierte Kameraeinstellungen konnten nicht angewendet werden.",
                 error
             );
         }
     }
 
-    async function waitForVideoReady(videoElement) {
+    async function waitForVideoReady(
+        videoElement
+    ) {
         if (
             videoElement.videoWidth &&
             videoElement.videoHeight
         ) {
-            await delay(350);
+            await delay(250);
             return;
         }
 
-        await new Promise((resolve, reject) => {
-            let finished = false;
-
-            const finish = callback => {
-                if (finished) {
-                    return;
-                }
-                finished = true;
-                global.clearTimeout(timeoutId);
-                videoElement.removeEventListener(
-                    "loadedmetadata",
-                    onReady
-                );
-                callback();
-            };
-
-            const onReady = () =>
-                finish(resolve);
-
-            const timeoutId =
-                global.setTimeout(
-                    () =>
-                        finish(() => reject(
+        await new Promise(
+            (resolve, reject) => {
+                const timeoutId =
+                    global.setTimeout(
+                        () => reject(
                             new Error(
                                 "Die Kamera liefert noch kein stabiles Bild."
                             )
-                        )),
-                    5000
-                );
+                        ),
+                        5000
+                    );
 
-            videoElement.addEventListener(
-                "loadedmetadata",
-                onReady,
-                { once: true }
-            );
-        });
-
-        await delay(450);
-    }
-
-    async function startCamera(videoElement) {
-        stopCamera(videoElement);
-        assertCameraEnvironment();
-        await initializeQrEngine();
-
-        stream =
-            await global.navigator.mediaDevices.getUserMedia({
-                audio: false,
-                video: {
-                    facingMode: {
-                        ideal: "environment"
-                    },
-                    width: {
-                        ideal: 2560,
-                        min: 1280
-                    },
-                    height: {
-                        ideal: 1440,
-                        min: 720
-                    }
-                }
-            });
-
-        const [track] =
-            stream.getVideoTracks();
-
-        await applyBestCameraConstraints(track);
-
-        videoElement.srcObject = stream;
-        await videoElement.play();
-        await waitForVideoReady(videoElement);
-
-        const settings =
-            track &&
-            typeof track.getSettings === "function"
-                ? track.getSettings()
-                : {};
-
-        return {
-            mode,
-            displayName:
-                mode === "BARCODE_DETECTOR"
-                    ? "native Browser-Erkennung + jsQR-Mehrfachscan"
-                    : "jsQR-Mehrfachscan",
-            width:
-                settings.width ||
-                videoElement.videoWidth,
-            height:
-                settings.height ||
-                videoElement.videoHeight,
-            focusMode:
-                settings.focusMode ||
-                "unbekannt"
-        };
-    }
-
-    function stopCamera(videoElement) {
-        if (stream) {
-            for (const track of stream.getTracks()) {
-                track.stop();
+                videoElement
+                    .addEventListener(
+                        "loadedmetadata",
+                        () => {
+                            global.clearTimeout(
+                                timeoutId
+                            );
+                            resolve();
+                        },
+                        { once: true }
+                    );
             }
+        );
 
-            stream = null;
-        }
-
-        if (videoElement) {
-            videoElement.srcObject = null;
-        }
-
-        detector = null;
-        mode = null;
+        await delay(250);
     }
 
-    function calculateImageQuality(canvas, context) {
-        const maxSamples = 140000;
-        const totalPixels =
-            canvas.width * canvas.height;
-        const step = Math.max(
-            1,
-            Math.ceil(
-                Math.sqrt(
-                    totalPixels / maxSamples
+    function calculateImageQuality(
+        canvas,
+        context
+    ) {
+        const targetWidth =
+            Math.min(
+                canvas.width,
+                900
+            );
+
+        const scale =
+            targetWidth /
+            canvas.width;
+
+        const targetHeight =
+            Math.max(
+                1,
+                Math.round(
+                    canvas.height *
+                    scale
                 )
-            )
+            );
+
+        const sample =
+            document.createElement(
+                "canvas"
+            );
+
+        sample.width = targetWidth;
+        sample.height = targetHeight;
+
+        const sampleContext =
+            sample.getContext(
+                "2d",
+                {
+                    willReadFrequently:
+                        true
+                }
+            );
+
+        sampleContext.drawImage(
+            canvas,
+            0,
+            0,
+            targetWidth,
+            targetHeight
         );
 
         const imageData =
-            context.getImageData(
+            sampleContext.getImageData(
                 0,
                 0,
-                canvas.width,
-                canvas.height
+                targetWidth,
+                targetHeight
             );
+
         const data = imageData.data;
         let brightnessSum = 0;
-        let glareCount = 0;
-        let darkCount = 0;
-        let gradientSum = 0;
+        let glare = 0;
+        let dark = 0;
+        let gradient = 0;
         let samples = 0;
 
-        const luminanceAt = (x, y) => {
-            const index =
-                (y * canvas.width + x) * 4;
-            return (
-                data[index] * 0.299 +
-                data[index + 1] * 0.587 +
-                data[index + 2] * 0.114
-            );
-        };
+        const luminanceAt = index =>
+            data[index] * 0.299 +
+            data[index + 1] * 0.587 +
+            data[index + 2] * 0.114;
 
         for (
-            let y = step;
-            y < canvas.height - step;
-            y += step
+            let y = 1;
+            y < targetHeight - 1;
+            y += 2
         ) {
             for (
-                let x = step;
-                x < canvas.width - step;
-                x += step
+                let x = 1;
+                x < targetWidth - 1;
+                x += 2
             ) {
-                const value = luminanceAt(x, y);
-                const right = luminanceAt(
-                    Math.min(
-                        canvas.width - 1,
-                        x + step
-                    ),
-                    y
-                );
-                const down = luminanceAt(
-                    x,
-                    Math.min(
-                        canvas.height - 1,
-                        y + step
-                    )
-                );
+                const index =
+                    (
+                        y *
+                        targetWidth +
+                        x
+                    ) * 4;
+
+                const rightIndex =
+                    (
+                        y *
+                        targetWidth +
+                        x + 1
+                    ) * 4;
+
+                const downIndex =
+                    (
+                        (
+                            y + 1
+                        ) *
+                        targetWidth +
+                        x
+                    ) * 4;
+
+                const value =
+                    luminanceAt(
+                        index
+                    );
 
                 brightnessSum += value;
-                gradientSum +=
-                    Math.abs(value - right) +
-                    Math.abs(value - down);
-                glareCount +=
-                    value >= 247 ? 1 : 0;
-                darkCount +=
-                    value <= 28 ? 1 : 0;
+                glare +=
+                    value >= 247
+                        ? 1
+                        : 0;
+                dark +=
+                    value <= 28
+                        ? 1
+                        : 0;
+
+                gradient +=
+                    Math.abs(
+                        value -
+                        luminanceAt(
+                            rightIndex
+                        )
+                    ) +
+                    Math.abs(
+                        value -
+                        luminanceAt(
+                            downIndex
+                        )
+                    );
+
                 samples += 1;
             }
         }
 
         const brightness =
-            samples > 0
-                ? brightnessSum / samples
+            samples
+                ? brightnessSum /
+                  samples
                 : 0;
+
         const edgeScore =
-            samples > 0
-                ? gradientSum / samples
+            samples
+                ? gradient /
+                  samples
                 : 0;
+
         const glareRatio =
-            samples > 0
-                ? glareCount / samples
+            samples
+                ? glare /
+                  samples
                 : 0;
+
         const darkRatio =
-            samples > 0
-                ? darkCount / samples
+            samples
+                ? dark /
+                  samples
                 : 0;
+
         const warnings = [];
 
-        if (brightness < 65) {
-            warnings.push("zu dunkel");
+        if (brightness < 58) {
+            warnings.push(
+                "zu dunkel"
+            );
         }
-        if (brightness > 220) {
-            warnings.push("zu hell");
+
+        if (brightness > 225) {
+            warnings.push(
+                "zu hell"
+            );
         }
-        if (glareRatio > 0.16) {
-            warnings.push("starke Reflexionen");
+
+        if (glareRatio > 0.18) {
+            warnings.push(
+                "starke Reflexionen"
+            );
         }
-        if (darkRatio > 0.36) {
-            warnings.push("große dunkle Flächen");
+
+        if (darkRatio > 0.42) {
+            warnings.push(
+                "große dunkle Flächen"
+            );
         }
-        if (edgeScore < 13) {
-            warnings.push("möglicherweise unscharf");
+
+        if (edgeScore < 10) {
+            warnings.push(
+                "möglicherweise unscharf"
+            );
         }
 
         return {
             brightness:
-                Math.round(brightness),
+                Math.round(
+                    brightness
+                ),
             edgeScore:
                 Math.round(
                     edgeScore * 10
@@ -417,10 +606,14 @@
         };
     }
 
-    function captureFrame(videoElement) {
+    function canvasFromVideo(
+        videoElement,
+        maxWidth = 0
+    ) {
         if (
             videoElement.readyState <
-            global.HTMLMediaElement.HAVE_CURRENT_DATA ||
+            global.HTMLMediaElement
+                .HAVE_CURRENT_DATA ||
             !videoElement.videoWidth ||
             !videoElement.videoHeight
         ) {
@@ -429,24 +622,51 @@
             );
         }
 
+        const scale =
+            maxWidth > 0 &&
+            videoElement.videoWidth >
+                maxWidth
+                ? maxWidth /
+                  videoElement.videoWidth
+                : 1;
+
         const canvas =
-            document.createElement("canvas");
-        canvas.width = videoElement.videoWidth;
-        canvas.height = videoElement.videoHeight;
-
-        const context = canvas.getContext(
-            "2d",
-            { willReadFrequently: true }
-        );
-
-        if (!context) {
-            throw new Error(
-                "Die Label-Aufnahme konnte nicht verarbeitet werden."
+            document.createElement(
+                "canvas"
             );
-        }
 
-        context.imageSmoothingEnabled = true;
-        context.imageSmoothingQuality = "high";
+        canvas.width =
+            Math.max(
+                1,
+                Math.round(
+                    videoElement.videoWidth *
+                    scale
+                )
+            );
+
+        canvas.height =
+            Math.max(
+                1,
+                Math.round(
+                    videoElement.videoHeight *
+                    scale
+                )
+            );
+
+        const context =
+            canvas.getContext(
+                "2d",
+                {
+                    willReadFrequently:
+                        true
+                }
+            );
+
+        context.imageSmoothingEnabled =
+            true;
+        context.imageSmoothingQuality =
+            "high";
+
         context.drawImage(
             videoElement,
             0,
@@ -455,30 +675,205 @@
             canvas.height
         );
 
-        const quality =
-            calculateImageQuality(
+        return {
+            canvas,
+            context
+        };
+    }
+
+    async function canvasFromBlob(blob) {
+        const bitmap =
+            await global.createImageBitmap(
+                blob
+            );
+
+        try {
+            const canvas =
+                document.createElement(
+                    "canvas"
+                );
+
+            canvas.width = bitmap.width;
+            canvas.height = bitmap.height;
+
+            const context =
+                canvas.getContext(
+                    "2d",
+                    {
+                        willReadFrequently:
+                            true
+                    }
+                );
+
+            context.drawImage(
+                bitmap,
+                0,
+                0
+            );
+
+            return {
                 canvas,
                 context
+            };
+        }
+        finally {
+            if (
+                typeof bitmap.close ===
+                "function"
+            ) {
+                bitmap.close();
+            }
+        }
+    }
+
+    async function captureBestStill(
+        videoElement
+    ) {
+        let captureSource =
+            "Videoframe";
+        let capture = null;
+
+        if (
+            activeTrack &&
+            "ImageCapture" in global
+        ) {
+            try {
+                const imageCapture =
+                    new global.ImageCapture(
+                        activeTrack
+                    );
+
+                if (
+                    typeof imageCapture.takePhoto ===
+                    "function"
+                ) {
+                    const blob =
+                        await imageCapture
+                            .takePhoto();
+
+                    capture =
+                        await canvasFromBlob(
+                            blob
+                        );
+
+                    captureSource =
+                        "Kamera-Foto";
+                }
+            }
+            catch (error) {
+                console.warn(
+                    "Hochauflösendes Kamera-Foto nicht verfügbar. Videoframe wird verwendet.",
+                    error
+                );
+            }
+        }
+
+        if (!capture) {
+            capture =
+                canvasFromVideo(
+                    videoElement
+                );
+        }
+
+        const quality =
+            calculateImageQuality(
+                capture.canvas,
+                capture.context
             );
 
         lastDiagnostics = {
             resolution:
-                `${canvas.width}×${canvas.height}`,
+                `${capture.canvas.width}×${capture.canvas.height}`,
+            captureSource,
             quality,
             qrAttempts: [],
-            qrEngine: mode || "UNKNOWN",
-            qrFoundBy: ""
+            qrEngine:
+                engineMode,
+            qrFoundBy: "",
+            liveQrText:
+                lastLiveQrText,
+            liveQrAt:
+                lastLiveQrAt
         };
 
         return {
-            canvas,
-            context,
+            ...capture,
+            quality,
+            captureSource,
+            dataUrl:
+                capture.canvas
+                    .toDataURL(
+                        "image/jpeg",
+                        0.94
+                    )
+        };
+    }
+
+    function captureFrame(videoElement) {
+        if (
+            pendingHighResolutionCapture
+        ) {
+            const prepared =
+                pendingHighResolutionCapture;
+
+            pendingHighResolutionCapture =
+                null;
+
+            lastDiagnostics =
+                prepared.diagnostics;
+
+            return {
+                canvas:
+                    prepared.canvas,
+                context:
+                    prepared.context,
+                quality:
+                    prepared.quality,
+                dataUrl:
+                    prepared.dataUrl,
+                captureSource:
+                    prepared.captureSource
+            };
+        }
+
+        const capture =
+            canvasFromVideo(
+                videoElement
+            );
+
+        const quality =
+            calculateImageQuality(
+                capture.canvas,
+                capture.context
+            );
+
+        lastDiagnostics = {
+            resolution:
+                `${capture.canvas.width}×${capture.canvas.height}`,
+            captureSource:
+                "Videoframe",
+            quality,
+            qrAttempts: [],
+            qrEngine:
+                engineMode,
+            qrFoundBy: "",
+            liveQrText:
+                lastLiveQrText,
+            liveQrAt:
+                lastLiveQrAt
+        };
+
+        return {
+            ...capture,
             quality,
             dataUrl:
-                canvas.toDataURL(
-                    "image/jpeg",
-                    0.94
-                )
+                capture.canvas
+                    .toDataURL(
+                        "image/jpeg",
+                        0.94
+                    ),
+            captureSource:
+                "Videoframe"
         };
     }
 
@@ -488,36 +883,45 @@
         y,
         width,
         height,
-        targetMinWidth = 0
+        targetWidth = 0
     ) {
         const scale =
-            targetMinWidth > 0 &&
-            width < targetMinWidth
-                ? Math.min(
-                    3,
-                    targetMinWidth / width
-                )
+            targetWidth > 0 &&
+            width > targetWidth
+                ? targetWidth /
+                  width
                 : 1;
 
         const canvas =
-            document.createElement("canvas");
+            document.createElement(
+                "canvas"
+            );
+
         canvas.width =
             Math.max(
                 1,
-                Math.round(width * scale)
+                Math.round(
+                    width * scale
+                )
             );
+
         canvas.height =
             Math.max(
                 1,
-                Math.round(height * scale)
+                Math.round(
+                    height * scale
+                )
             );
 
-        const context = canvas.getContext(
-            "2d",
-            { willReadFrequently: true }
-        );
+        const context =
+            canvas.getContext(
+                "2d",
+                {
+                    willReadFrequently:
+                        true
+                }
+            );
 
-        context.imageSmoothingEnabled = false;
         context.drawImage(
             sourceCanvas,
             x,
@@ -536,115 +940,31 @@
         };
     }
 
-    function createEnhancedCanvas(
-        sourceCanvas,
-        modeName
-    ) {
-        const canvas =
-            document.createElement("canvas");
-        canvas.width = sourceCanvas.width;
-        canvas.height = sourceCanvas.height;
-        const context = canvas.getContext(
-            "2d",
-            { willReadFrequently: true }
-        );
-        context.drawImage(
-            sourceCanvas,
-            0,
-            0
-        );
-
-        const imageData =
-            context.getImageData(
-                0,
-                0,
-                canvas.width,
-                canvas.height
-            );
-        const data = imageData.data;
-        let sum = 0;
-        let count = 0;
-
-        for (
-            let index = 0;
-            index < data.length;
-            index += 4
-        ) {
-            const luminance =
-                data[index] * 0.299 +
-                data[index + 1] * 0.587 +
-                data[index + 2] * 0.114;
-            sum += luminance;
-            count += 1;
-        }
-
-        const mean =
-            count > 0
-                ? sum / count
-                : 128;
-
-        for (
-            let index = 0;
-            index < data.length;
-            index += 4
-        ) {
-            const luminance =
-                data[index] * 0.299 +
-                data[index + 1] * 0.587 +
-                data[index + 2] * 0.114;
-
-            let value = luminance;
-
-            if (modeName === "contrast") {
-                value =
-                    Math.max(
-                        0,
-                        Math.min(
-                            255,
-                            (luminance - 128) *
-                            1.7 +
-                            128
-                        )
-                    );
-            }
-            else if (modeName === "threshold") {
-                value =
-                    luminance >= mean
-                        ? 255
-                        : 0;
-            }
-
-            data[index] = value;
-            data[index + 1] = value;
-            data[index + 2] = value;
-        }
-
-        context.putImageData(
-            imageData,
-            0,
-            0
-        );
-
-        return {
-            canvas,
-            context
-        };
-    }
-
-    function decodeWithJsQr(
+    async function decodeWithZxing(
         canvas,
-        context,
         label
     ) {
-        if (typeof global.jsQR !== "function") {
+        if (
+            !global.ZXingWASM ||
+            typeof global.ZXingWASM.readBarcodes !==
+            "function"
+        ) {
             return "";
         }
 
         if (lastDiagnostics) {
-            lastDiagnostics.qrAttempts.push(
-                label
-            );
+            lastDiagnostics.qrAttempts
+                .push(label);
         }
+
+        const context =
+            canvas.getContext(
+                "2d",
+                {
+                    willReadFrequently:
+                        true
+                }
+            );
 
         const imageData =
             context.getImageData(
@@ -654,94 +974,221 @@
                 canvas.height
             );
 
-        const result = global.jsQR(
-            imageData.data,
-            canvas.width,
-            canvas.height,
-            {
-                inversionAttempts:
-                    "attemptBoth"
-            }
-        );
+        const results =
+            await global.ZXingWASM
+                .readBarcodes(
+                    imageData,
+                    {
+                        formats: [
+                            "QRCode"
+                        ],
+                        tryHarder: true,
+                        tryRotate: true,
+                        tryInvert: true,
+                        tryDownscale: true,
+                        tryDenoise: true,
+                        maxNumberOfSymbols: 1
+                    }
+                );
 
-        if (result && result.data) {
-            if (lastDiagnostics) {
+        const result =
+            Array.isArray(results)
+                ? results.find(
+                    item =>
+                        item &&
+                        item.isValid !==
+                            false &&
+                        String(
+                            item.text ||
+                            ""
+                        ).trim()
+                )
+                : null;
+
+        if (!result) {
+            return "";
+        }
+
+        const text =
+            String(
+                result.text || ""
+            ).trim();
+
+        if (
+            text &&
+            lastDiagnostics
+        ) {
+            lastDiagnostics.qrFoundBy =
+                label;
+        }
+
+        return text;
+    }
+
+    async function decodeWithBarcodeDetector(
+        canvas,
+        label
+    ) {
+        if (!detector) {
+            return "";
+        }
+
+        if (lastDiagnostics) {
+            lastDiagnostics.qrAttempts
+                .push(label);
+        }
+
+        try {
+            const barcodes =
+                await detector.detect(
+                    canvas
+                );
+
+            const raw =
+                barcodes &&
+                barcodes[0]
+                    ? String(
+                        barcodes[0]
+                            .rawValue ||
+                        ""
+                    ).trim()
+                    : "";
+
+            if (
+                raw &&
+                lastDiagnostics
+            ) {
                 lastDiagnostics.qrFoundBy =
                     label;
             }
-            return String(
-                result.data
-            ).trim();
-        }
 
-        return "";
+            return raw;
+        }
+        catch {
+            return "";
+        }
     }
 
-    function getTileRegions(canvas) {
-        const regions = [];
-        const width = canvas.width;
-        const height = canvas.height;
-
-        regions.push({
-            label: "Zentrum 82%",
-            x: Math.round(width * 0.09),
-            y: Math.round(height * 0.09),
-            width: Math.round(width * 0.82),
-            height: Math.round(height * 0.82)
-        });
-
-        const tileWidth =
-            Math.round(width * 0.62);
-        const tileHeight =
-            Math.round(height * 0.62);
-        const xPositions = [
-            0,
-            width - tileWidth
-        ];
-        const yPositions = [
-            0,
-            height - tileHeight
-        ];
-
-        for (
-            let yIndex = 0;
-            yIndex < yPositions.length;
-            yIndex += 1
+    function decodeWithJsQr(
+        canvas,
+        label
+    ) {
+        if (
+            typeof global.jsQR !==
+            "function"
         ) {
-            for (
-                let xIndex = 0;
-                xIndex < xPositions.length;
-                xIndex += 1
-            ) {
-                regions.push({
-                    label:
-                        `Teilbild ${yIndex + 1}.${xIndex + 1}`,
-                    x:
-                        Math.max(
-                            0,
-                            xPositions[xIndex]
-                        ),
-                    y:
-                        Math.max(
-                            0,
-                            yPositions[yIndex]
-                        ),
-                    width:
-                        tileWidth,
-                    height:
-                        tileHeight
-                });
+            return "";
+        }
+
+        if (lastDiagnostics) {
+            lastDiagnostics.qrAttempts
+                .push(label);
+        }
+
+        const context =
+            canvas.getContext(
+                "2d",
+                {
+                    willReadFrequently:
+                        true
+                }
+            );
+
+        const imageData =
+            context.getImageData(
+                0,
+                0,
+                canvas.width,
+                canvas.height
+            );
+
+        const result =
+            global.jsQR(
+                imageData.data,
+                canvas.width,
+                canvas.height,
+                {
+                    inversionAttempts:
+                        "attemptBoth"
+                }
+            );
+
+        const text =
+            result &&
+            result.data
+                ? String(
+                    result.data
+                ).trim()
+                : "";
+
+        if (
+            text &&
+            lastDiagnostics
+        ) {
+            lastDiagnostics.qrFoundBy =
+                label;
+        }
+
+        return text;
+    }
+
+    async function decodeSingleCanvas(
+        canvas,
+        label
+    ) {
+        let value = "";
+
+        if (
+            engineMode ===
+            "ZXING_WASM"
+        ) {
+            try {
+                value =
+                    await decodeWithZxing(
+                        canvas,
+                        `ZXing ${label}`
+                    );
+            }
+            catch (error) {
+                console.warn(
+                    "ZXing-WASM Scan fehlgeschlagen. Fallback wird versucht.",
+                    error
+                );
             }
         }
 
-        return regions;
+        if (
+            !value &&
+            detector
+        ) {
+            value =
+                await decodeWithBarcodeDetector(
+                    canvas,
+                    `BarcodeDetector ${label}`
+                );
+        }
+
+        if (!value) {
+            value =
+                decodeWithJsQr(
+                    canvas,
+                    `jsQR ${label}`
+                );
+        }
+
+        return value;
     }
 
-    async function detectQr(canvas, context) {
+    async function detectQr(
+        canvas,
+        context
+    ) {
         if (!lastDiagnostics) {
             lastDiagnostics = {
                 resolution:
                     `${canvas.width}×${canvas.height}`,
+                captureSource:
+                    "Bild",
                 quality:
                     calculateImageQuality(
                         canvas,
@@ -749,110 +1196,110 @@
                     ),
                 qrAttempts: [],
                 qrEngine:
-                    mode || "UNKNOWN",
-                qrFoundBy: ""
+                    engineMode,
+                qrFoundBy: "",
+                liveQrText:
+                    lastLiveQrText,
+                liveQrAt:
+                    lastLiveQrAt
             };
         }
 
-        if (
-            mode === "BARCODE_DETECTOR" &&
-            detector
-        ) {
-            try {
-                lastDiagnostics.qrAttempts.push(
-                    "BarcodeDetector Vollbild"
+        if (lastLiveQrText) {
+            lastDiagnostics.qrAttempts
+                .push(
+                    "Live-Scan Treffer"
                 );
 
-                const barcodes =
-                    await detector.detect(
-                        canvas
-                    );
+            lastDiagnostics.qrFoundBy =
+                "ZXing Live-Scan";
 
-                if (barcodes.length > 0) {
-                    const raw = String(
-                        barcodes[0].rawValue || ""
-                    ).trim();
-
-                    if (raw) {
-                        lastDiagnostics.qrFoundBy =
-                            "BarcodeDetector Vollbild";
-                        return raw;
-                    }
-                }
-            }
-            catch (error) {
-                console.warn(
-                    "BarcodeDetector konnte das Bild nicht auswerten. jsQR wird versucht.",
-                    error
-                );
-            }
+            return lastLiveQrText;
         }
 
-        let value = decodeWithJsQr(
-            canvas,
-            context,
-            "jsQR Vollbild"
-        );
+        let value =
+            await decodeSingleCanvas(
+                canvas,
+                "Vollbild"
+            );
 
         if (value) {
             return value;
         }
 
-        for (const enhancement of [
-            "contrast",
-            "threshold"
-        ]) {
-            const enhanced =
-                createEnhancedCanvas(
-                    canvas,
-                    enhancement
-                );
-            value = decodeWithJsQr(
-                enhanced.canvas,
-                enhanced.context,
-                `jsQR Vollbild ${enhancement}`
-            );
+        const width = canvas.width;
+        const height = canvas.height;
 
-            if (value) {
-                return value;
-            }
-        }
+        const regions = [
+            [
+                "Zentrum 85%",
+                0.075,
+                0.075,
+                0.85,
+                0.85
+            ],
+            [
+                "Mitte links",
+                0.0,
+                0.12,
+                0.68,
+                0.76
+            ],
+            [
+                "Mitte rechts",
+                0.32,
+                0.12,
+                0.68,
+                0.76
+            ],
+            [
+                "Oben",
+                0.08,
+                0.0,
+                0.84,
+                0.68
+            ],
+            [
+                "Unten",
+                0.08,
+                0.32,
+                0.84,
+                0.68
+            ]
+        ];
 
         for (
-            const region of
-            getTileRegions(canvas)
+            const [
+                label,
+                rx,
+                ry,
+                rw,
+                rh
+            ] of regions
         ) {
-            const tile =
+            const region =
                 cloneRegionCanvas(
                     canvas,
-                    region.x,
-                    region.y,
-                    region.width,
-                    region.height,
-                    1400
+                    Math.round(
+                        width * rx
+                    ),
+                    Math.round(
+                        height * ry
+                    ),
+                    Math.round(
+                        width * rw
+                    ),
+                    Math.round(
+                        height * rh
+                    ),
+                    1800
                 );
 
-            value = decodeWithJsQr(
-                tile.canvas,
-                tile.context,
-                `jsQR ${region.label}`
-            );
-
-            if (value) {
-                return value;
-            }
-
-            const enhanced =
-                createEnhancedCanvas(
-                    tile.canvas,
-                    "contrast"
+            value =
+                await decodeSingleCanvas(
+                    region.canvas,
+                    label
                 );
-
-            value = decodeWithJsQr(
-                enhanced.canvas,
-                enhanced.context,
-                `jsQR ${region.label} Kontrast`
-            );
 
             if (value) {
                 return value;
@@ -862,8 +1309,518 @@
         return "";
     }
 
+    async function scanLiveFrame(
+        videoElement
+    ) {
+        if (
+            liveBusy ||
+            !stream ||
+            !videoElement.videoWidth
+        ) {
+            return;
+        }
+
+        liveBusy = true;
+
+        try {
+            const { canvas } =
+                canvasFromVideo(
+                    videoElement,
+                    LIVE_SCAN_MAX_WIDTH
+                );
+
+            const text =
+                await decodeSingleCanvas(
+                    canvas,
+                    "Live"
+                );
+
+            if (text) {
+                lastLiveQrText = text;
+                lastLiveQrAt =
+                    new Date()
+                        .toISOString();
+
+                updateLiveUi(
+                    text
+                );
+            }
+        }
+        catch (error) {
+            console.debug(
+                "Live-QR-Scan ohne Treffer:",
+                error
+            );
+        }
+        finally {
+            liveBusy = false;
+        }
+    }
+
+    function startLiveLoop(
+        videoElement
+    ) {
+        stopLiveLoop();
+
+        liveTimer =
+            global.setInterval(
+                () => {
+                    scanLiveFrame(
+                        videoElement
+                    );
+                },
+                LIVE_SCAN_INTERVAL_MS
+            );
+    }
+
+    function stopLiveLoop() {
+        if (liveTimer) {
+            global.clearInterval(
+                liveTimer
+            );
+
+            liveTimer = null;
+        }
+
+        liveBusy = false;
+    }
+
+    async function startCamera(
+        videoElement
+    ) {
+        stopCamera(
+            videoElement
+        );
+
+        assertCameraEnvironment();
+        await initializeQrEngine();
+
+        lastLiveQrText = "";
+        lastLiveQrAt = null;
+        pendingHighResolutionCapture =
+            null;
+
+        stream =
+            await global.navigator
+                .mediaDevices
+                .getUserMedia({
+                    audio: false,
+                    video: {
+                        facingMode: {
+                            ideal:
+                                "environment"
+                        },
+                        width: {
+                            ideal: 2560,
+                            min: 1280
+                        },
+                        height: {
+                            ideal: 1440,
+                            min: 720
+                        }
+                    }
+                });
+
+        [activeTrack] =
+            stream.getVideoTracks();
+
+        await applyBestCameraConstraints(
+            activeTrack
+        );
+
+        videoElement.srcObject =
+            stream;
+
+        await videoElement.play();
+        await waitForVideoReady(
+            videoElement
+        );
+
+        const settings =
+            activeTrack &&
+            typeof activeTrack.getSettings ===
+            "function"
+                ? activeTrack.getSettings()
+                : {};
+
+        startLiveLoop(
+            videoElement
+        );
+
+        return {
+            mode:
+                engineMode,
+            displayName:
+                engineMode ===
+                "ZXING_WASM"
+                    ? "ZXing-C++ WebAssembly"
+                    : engineMode ===
+                      "BARCODE_DETECTOR"
+                        ? "Browser BarcodeDetector"
+                        : "jsQR Fallback",
+            width:
+                settings.width ||
+                videoElement.videoWidth,
+            height:
+                settings.height ||
+                videoElement.videoHeight,
+            focusMode:
+                settings.focusMode ||
+                "unbekannt"
+        };
+    }
+
+    function stopCamera(videoElement) {
+        stopLiveLoop();
+
+        pendingHighResolutionCapture =
+            null;
+
+        if (stream) {
+            for (
+                const track of
+                stream.getTracks()
+            ) {
+                track.stop();
+            }
+
+            stream = null;
+        }
+
+        activeTrack = null;
+
+        if (videoElement) {
+            videoElement.srcObject =
+                null;
+        }
+
+        detector = null;
+    }
+
+    function updateLiveUi(qrText) {
+        const qrInput =
+            document.getElementById(
+                "qrInput"
+            );
+
+        const result =
+            document.getElementById(
+                "qrScanResult"
+            );
+
+        const status =
+            document.getElementById(
+                "qrScannerStatus"
+            );
+
+        const diagnostics =
+            document.getElementById(
+                "scannerDiagnostics"
+            );
+
+        if (qrInput) {
+            qrInput.value = qrText;
+        }
+
+        if (result) {
+            result.textContent =
+                "QR-Code live erkannt.";
+
+            result.classList.remove(
+                "error"
+            );
+
+            result.classList.add(
+                "success"
+            );
+        }
+
+        if (status) {
+            status.textContent =
+                "QR-Code erkannt. Jetzt Foto aufnehmen, damit die sichtbare Beschriftung per OCR geprüft wird.";
+
+            status.classList.remove(
+                "error"
+            );
+
+            status.classList.add(
+                "success"
+            );
+        }
+
+        if (diagnostics) {
+            diagnostics.textContent =
+                `QR live erkannt · ${engineMode} · ${new Date(lastLiveQrAt).toLocaleTimeString()}`;
+
+            diagnostics.classList.add(
+                "good"
+            );
+        }
+    }
+
+    async function prepareHighResolutionCapture(
+        button
+    ) {
+        const video =
+            document.getElementById(
+                "qrScannerVideo"
+            );
+
+        const status =
+            document.getElementById(
+                "qrScannerStatus"
+            );
+
+        if (
+            !video ||
+            !stream
+        ) {
+            return;
+        }
+
+        if (status) {
+            status.textContent =
+                "Hochauflösendes Label-Foto wird aufgenommen …";
+
+            status.classList.remove(
+                "error"
+            );
+        }
+
+        try {
+            const capture =
+                await captureBestStill(
+                    video
+                );
+
+            pendingHighResolutionCapture = {
+                ...capture,
+                diagnostics:
+                    JSON.parse(
+                        JSON.stringify(
+                            lastDiagnostics
+                        )
+                    )
+            };
+        }
+        catch (error) {
+            console.warn(
+                "Hochauflösende Aufnahme fehlgeschlagen. Videoframe wird verwendet.",
+                error
+            );
+
+            pendingHighResolutionCapture =
+                null;
+        }
+
+        bypassNextCaptureClick = true;
+        button.disabled = false;
+        button.click();
+    }
+
+    function installCompactScannerUi() {
+        if (
+            document.getElementById(
+                "scannerCompactV2Styles"
+            )
+        ) {
+            return;
+        }
+
+        const style =
+            document.createElement(
+                "style"
+            );
+
+        style.id =
+            "scannerCompactV2Styles";
+
+        style.textContent = `
+            .scanner-overlay {
+                align-items: center !important;
+                padding: 12px !important;
+            }
+
+            .scanner-dialog {
+                width: min(560px, 100%) !important;
+                max-height: calc(100vh - 24px) !important;
+                min-height: 0 !important;
+                overflow-y: auto !important;
+                border-radius: 12px !important;
+            }
+
+            .scanner-header {
+                align-items: center !important;
+                padding: 11px 14px !important;
+            }
+
+            .scanner-header h2 {
+                margin-bottom: 0 !important;
+                font-size: 1.05rem !important;
+            }
+
+            .scanner-header .eyebrow {
+                margin-bottom: 2px !important;
+            }
+
+            .scanner-close-button {
+                width: 34px !important;
+                height: 34px !important;
+                flex: 0 0 34px !important;
+                font-size: 1.25rem !important;
+            }
+
+            .scanner-content {
+                gap: 8px !important;
+                padding: 10px 14px 14px !important;
+            }
+
+            .scanner-video-shell {
+                width: min(100%, 470px) !important;
+                max-height: 40vh !important;
+                margin: 0 auto !important;
+                aspect-ratio: 4 / 3 !important;
+                border-radius: 9px !important;
+            }
+
+            .scanner-target {
+                inset: 15% !important;
+                width: auto !important;
+                height: auto !important;
+            }
+
+            .scanner-target span {
+                width: 30px !important;
+                height: 30px !important;
+            }
+
+            .scanner-status,
+            .scanner-diagnostics {
+                padding: 7px 9px !important;
+                font-size: 0.77rem !important;
+                line-height: 1.35 !important;
+            }
+
+            .scanner-actions {
+                gap: 6px !important;
+            }
+
+            .scanner-actions .button {
+                min-height: 35px !important;
+                padding: 0 11px !important;
+                font-size: 0.8rem !important;
+            }
+
+            .scanner-trigger-button {
+                min-width: 155px !important;
+            }
+
+            .scanner-content > .hint {
+                margin-top: 1px !important;
+                font-size: 0.74rem !important;
+                line-height: 1.3 !important;
+            }
+
+            @media (max-width: 720px) {
+                .scanner-overlay {
+                    padding: 8px !important;
+                }
+
+                .scanner-dialog {
+                    max-height: calc(100vh - 16px) !important;
+                    border-radius: 10px !important;
+                }
+
+                .scanner-video-shell {
+                    max-height: 36vh !important;
+                    aspect-ratio: 4 / 3 !important;
+                }
+
+                .scanner-actions {
+                    display: grid !important;
+                    grid-template-columns: 1fr 1fr !important;
+                }
+
+                .scanner-actions .scanner-trigger-button {
+                    grid-column: 1 / -1 !important;
+                }
+            }
+        `;
+
+        document.head.appendChild(
+            style
+        );
+
+        const title =
+            document.getElementById(
+                "qrScannerTitle"
+            );
+
+        const captureButton =
+            document.getElementById(
+                "captureLabelButton"
+            );
+
+        if (title) {
+            title.textContent =
+                "QR & Label scannen";
+        }
+
+        if (captureButton) {
+            captureButton.textContent =
+                "Foto aufnehmen & prüfen";
+
+            captureButton.addEventListener(
+                "click",
+                event => {
+                    if (
+                        bypassNextCaptureClick
+                    ) {
+                        bypassNextCaptureClick =
+                            false;
+                        return;
+                    }
+
+                    if (
+                        !stream ||
+                        !activeTrack
+                    ) {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+
+                    captureButton.disabled =
+                        true;
+
+                    prepareHighResolutionCapture(
+                        captureButton
+                    );
+                },
+                true
+            );
+        }
+    }
+
+    function installUiWhenReady() {
+        if (
+            document.readyState ===
+            "loading"
+        ) {
+            document.addEventListener(
+                "DOMContentLoaded",
+                installCompactScannerUi,
+                { once: true }
+            );
+            return;
+        }
+
+        installCompactScannerUi();
+    }
+
     function getMode() {
-        return mode;
+        return engineMode;
     }
 
     function getLastDiagnostics() {
@@ -878,14 +1835,22 @@
         );
     }
 
+    function getLiveQrText() {
+        return lastLiveQrText;
+    }
+
+    installUiWhenReady();
+
     global.TeiletrackingScannerService =
         Object.freeze({
             startCamera,
             stopCamera,
             captureFrame,
+            captureBestStill,
             detectQr,
             getMode,
             getLastDiagnostics,
+            getLiveQrText,
             getErrorMessage
         });
 })(window);
