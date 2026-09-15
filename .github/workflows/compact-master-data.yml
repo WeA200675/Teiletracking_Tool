@@ -1,0 +1,271 @@
+name: Compact master data UI
+
+on:
+  push:
+    branches:
+      - ui/compact-master-data
+    paths:
+      - ".github/workflows/compact-master-data.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  compact:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout compact UI branch
+        uses: actions/checkout@v4
+        with:
+          ref: ui/compact-master-data
+          fetch-depth: 0
+
+      - name: Apply compact master-data styles
+        shell: bash
+        run: |
+          cat >> prototype/styles.css <<'CSS'
+
+          /* ============================================================
+             Kompakte Stammdaten- und Zuordnungsoberfläche
+             ============================================================ */
+
+          @media (min-width: 901px) {
+              .assignment-grid {
+                  grid-template-columns: repeat(4, minmax(0, 1fr));
+                  gap: 12px;
+              }
+
+              .assignment-status-field {
+                  grid-column: 1 / -1;
+              }
+
+              .master-data-grid {
+                  grid-template-columns: repeat(3, minmax(0, 1fr));
+                  gap: 12px;
+              }
+
+              .status-master-panel {
+                  grid-column: span 2;
+              }
+
+              .master-data-overview {
+                  grid-template-columns: repeat(6, minmax(0, 1fr));
+              }
+
+              .master-data-lists {
+                  grid-template-columns: repeat(3, minmax(0, 1fr));
+                  gap: 12px;
+              }
+          }
+
+          .master-data-intro {
+              margin-bottom: 12px;
+          }
+
+          .master-data-panel {
+              gap: 10px;
+              padding: 14px;
+              border-radius: 10px;
+          }
+
+          .master-data-panel h3 {
+              font-size: 0.92rem;
+          }
+
+          .master-data-panel .field {
+              gap: 5px;
+          }
+
+          .master-data-panel .field > span {
+              font-size: 0.78rem;
+          }
+
+          .master-data-panel input,
+          .master-data-panel select {
+              min-height: 36px;
+              padding: 0 9px;
+              border-radius: 7px;
+              font-size: 0.86rem;
+          }
+
+          .master-data-panel .button {
+              min-height: 34px;
+              padding: 0 11px;
+              font-size: 0.82rem;
+          }
+
+          .master-data-message {
+              margin-top: 12px;
+              padding: 9px 11px;
+              font-size: 0.84rem;
+          }
+
+          .master-data-overview {
+              gap: 8px;
+              margin-top: 14px;
+          }
+
+          .master-data-overview > div {
+              gap: 2px;
+              padding: 9px 10px;
+              border-radius: 8px;
+          }
+
+          .master-data-overview strong {
+              font-size: 1.08rem;
+          }
+
+          .master-data-overview span {
+              font-size: 0.72rem;
+              line-height: 1.2;
+          }
+
+          .master-data-lists {
+              margin-top: 16px;
+          }
+
+          .master-data-list-heading {
+              margin-bottom: 6px;
+          }
+
+          .master-data-list-heading .eyebrow {
+              margin-bottom: 2px;
+              font-size: 0.68rem;
+          }
+
+          .master-data-list-heading h3 {
+              font-size: 0.9rem;
+          }
+
+          .master-data-list {
+              gap: 6px;
+          }
+
+          .master-data-item {
+              gap: 8px;
+              padding: 8px 9px;
+              border-radius: 8px;
+          }
+
+          .master-data-item-title {
+              gap: 5px;
+              margin-bottom: 2px;
+          }
+
+          .master-data-code {
+              font-size: 0.84rem;
+          }
+
+          .master-data-description {
+              font-size: 0.74rem;
+          }
+
+          .master-data-source {
+              min-height: 19px;
+              padding: 1px 6px;
+              font-size: 0.62rem;
+          }
+
+          .master-data-item-actions {
+              gap: 4px;
+          }
+
+          .master-data-item .mini-button {
+              min-height: 29px;
+              padding: 0 8px;
+              font-size: 0.7rem;
+          }
+
+          .master-data-list-empty {
+              padding: 10px;
+              font-size: 0.82rem;
+          }
+
+          .hint.compact {
+              margin-top: 5px;
+              font-size: 0.74rem;
+              line-height: 1.3;
+          }
+
+          @media (max-width: 1000px) and (min-width: 721px) {
+              .master-data-grid,
+              .master-data-lists {
+                  grid-template-columns: repeat(2, minmax(0, 1fr));
+                  gap: 12px;
+              }
+
+              .status-master-panel {
+                  grid-column: span 2;
+              }
+
+              .master-data-overview {
+                  grid-template-columns: repeat(3, minmax(0, 1fr));
+              }
+          }
+
+          @media (max-width: 720px) {
+              .master-data-panel {
+                  padding: 12px;
+              }
+
+              .master-data-panel input,
+              .master-data-panel select {
+                  min-height: 40px;
+              }
+
+              .master-data-panel .button {
+                  min-height: 38px;
+              }
+
+              .master-data-overview {
+                  grid-template-columns: repeat(2, minmax(0, 1fr));
+              }
+          }
+
+          @media (max-width: 420px) {
+              .master-data-overview {
+                  grid-template-columns: 1fr;
+              }
+          }
+          CSS
+
+      - name: Validate stylesheet and referenced UI files
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          css = Path('prototype/styles.css').read_text(encoding='utf-8')
+          if css.count('{') != css.count('}'):
+              raise SystemExit('styles.css has unbalanced braces')
+
+          required = [
+              '.master-data-grid',
+              '.master-data-panel',
+              '.master-data-overview',
+              '.master-data-lists',
+              '.assignment-grid'
+          ]
+          missing = [selector for selector in required if selector not in css]
+          if missing:
+              raise SystemExit(f'Missing compact selectors: {missing}')
+
+          html = Path('prototype/index.html').read_text(encoding='utf-8')
+          for class_name in ['master-data-grid', 'master-data-panel', 'master-data-overview', 'master-data-lists', 'assignment-grid']:
+              if class_name not in html:
+                  raise SystemExit(f'Expected class not found in index.html: {class_name}')
+
+          print('Compact master-data CSS validation OK')
+          PY
+
+      - name: Remove temporary workflow and commit
+        shell: bash
+        run: |
+          rm -f .github/workflows/compact-master-data.yml
+          git config user.name "Teiletracking Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Compact master-data UI"
+          git push origin HEAD:ui/compact-master-data
