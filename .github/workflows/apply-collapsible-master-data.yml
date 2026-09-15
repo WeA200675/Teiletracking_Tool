@@ -1,0 +1,416 @@
+name: Apply collapsible master data and quick properties
+
+on:
+  push:
+    branches:
+      - ui/collapsible-master-data-custom-properties
+    paths:
+      - ".github/workflows/apply-collapsible-master-data.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: ui/collapsible-master-data-custom-properties
+          fetch-depth: 0
+
+      - name: Apply UI changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          index_path = Path('prototype/index.html')
+          html = index_path.read_text(encoding='utf-8')
+
+          quick_anchor = '''                    <div id="partStatusChips" class="selected-part-statuses"></div>'''
+          quick_insert = '''                    <div id="partStatusChips" class="selected-part-statuses"></div>
+                    <div class="part-status-quick-actions">
+                        <button
+                            id="openCustomStatusButton"
+                            class="button button-ghost button-small"
+                            type="button"
+                        >
+                            + Eigenschaft hinzufügen
+                        </button>
+                        <span class="hint compact">Eigene Merkmale oder zusätzliche Zustände können jederzeit ergänzt werden.</span>
+                    </div>'''
+
+          if 'id="openCustomStatusButton"' not in html:
+              if quick_anchor not in html:
+                  raise SystemExit('partStatusChips anchor not found')
+              html = html.replace(quick_anchor, quick_insert, 1)
+
+          html = html.replace(
+              '<span>Teile-Status (Mehrfachauswahl)</span>',
+              '<span>Teile-Status / Eigenschaften (Mehrfachauswahl)</span>',
+              1
+          )
+          html = html.replace(
+              '<div class="master-data-panel status-master-panel">',
+              '<div id="statusMasterPanel" class="master-data-panel status-master-panel">',
+              1
+          )
+          html = html.replace(
+              '<h3>Teile-Status hinzufügen</h3>',
+              '<h3>Eigenschaft / Teile-Status hinzufügen</h3>',
+              1
+          )
+          html = html.replace(
+              '>Statuswert hinzufügen</button>',
+              '>Eigenschaft hinzufügen</button>',
+              1
+          )
+
+          start_marker = '''        <section class="card">
+            <div class="section-heading">
+                <div>
+                    <p class="eyebrow">Stammdaten</p>'''
+          next_marker = '''        <section class="card">
+            <h2>2. Teileinformationen</h2>'''
+
+          if 'id="masterDataDetails"' not in html:
+              start = html.find(start_marker)
+              end = html.find(next_marker, start + 1)
+              if start < 0 or end < 0:
+                  raise SystemExit('master data section markers not found')
+
+              section = html[start:end]
+              opening = '        <section class="card">\n'
+              closing = '        </section>\n\n'
+
+              if not section.startswith(opening) or not section.endswith(closing):
+                  raise SystemExit('unexpected master data section structure')
+
+              inner = section[len(opening):-len(closing)]
+              wrapped = '''        <section class="card master-data-card">
+            <details id="masterDataDetails" class="master-data-details">
+                <summary class="master-data-summary">
+                    <div class="master-data-summary-main">
+                        <span class="eyebrow">Stammdaten</span>
+                        <strong>Stammdaten verwalten</strong>
+                        <span class="master-data-summary-text">Derivate, I-Stufen, ATS, Y-Nummern und Eigenschaften</span>
+                    </div>
+                    <span id="masterDataToggleState" class="master-data-toggle-state">Aufklappen</span>
+                </summary>
+                <div class="master-data-details-content">
+''' + inner + '''                </div>
+            </details>
+        </section>
+
+'''
+              html = html[:start] + wrapped + html[end:]
+
+          script_anchor = '    <script src="./app.js"></script>\n'
+          script_insert = '    <script src="./app.js"></script>\n    <script src="./ui-enhancements.js"></script>\n'
+          if './ui-enhancements.js' not in html:
+              if script_anchor not in html:
+                  raise SystemExit('app.js script anchor not found')
+              html = html.replace(script_anchor, script_insert, 1)
+
+          index_path.write_text(html, encoding='utf-8')
+
+          css_path = Path('prototype/styles.css')
+          css = css_path.read_text(encoding='utf-8')
+          marker = '/* Collapsible master data + quick custom properties */'
+          if marker not in css:
+              css += r'''
+
+/* Collapsible master data + quick custom properties */
+.master-data-card {
+    padding: 0;
+    overflow: hidden;
+}
+
+.master-data-details > summary {
+    list-style: none;
+}
+
+.master-data-details > summary::-webkit-details-marker {
+    display: none;
+}
+
+.master-data-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 18px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.master-data-summary:hover {
+    background: #f7f8fa;
+}
+
+.master-data-summary-main {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    align-items: baseline;
+    gap: 8px 12px;
+}
+
+.master-data-summary-main .eyebrow {
+    grid-column: 1 / -1;
+    margin: 0;
+}
+
+.master-data-summary-main strong {
+    font-size: 1rem;
+}
+
+.master-data-summary-text {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
+.master-data-toggle-state {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 30px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: #ffffff;
+    color: var(--text-muted);
+    font-size: 0.76rem;
+    font-weight: 800;
+}
+
+.master-data-toggle-state::after {
+    content: "▾";
+    font-size: 0.8rem;
+}
+
+.master-data-details[open] .master-data-toggle-state::after {
+    content: "▴";
+}
+
+.master-data-details-content {
+    padding: 0 18px 18px;
+    border-top: 1px solid var(--border);
+}
+
+.master-data-details-content > .section-heading {
+    display: none;
+}
+
+.master-data-details-content > .master-data-intro {
+    margin-top: 14px;
+}
+
+.part-status-quick-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    margin-top: 8px;
+}
+
+.part-status-quick-actions .hint {
+    margin: 0;
+}
+
+.part-status-quick-actions .button {
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: 0.78rem;
+}
+
+.status-master-panel {
+    scroll-margin-top: 18px;
+}
+
+.status-master-panel.master-data-panel-attention {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgb(0 103 184 / 12%);
+}
+
+@media (max-width: 720px) {
+    .master-data-summary {
+        align-items: flex-start;
+        padding: 14px;
+    }
+
+    .master-data-summary-main {
+        grid-template-columns: 1fr;
+        gap: 3px;
+    }
+
+    .master-data-summary-text {
+        font-size: 0.78rem;
+    }
+
+    .master-data-details-content {
+        padding: 0 14px 14px;
+    }
+
+    .part-status-quick-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .part-status-quick-actions .button {
+        width: 100%;
+        min-height: 42px;
+    }
+}
+'''
+              css_path.write_text(css, encoding='utf-8')
+
+          js_path = Path('prototype/ui-enhancements.js')
+          js_path.write_text(r'''"use strict";
+
+(function initializeUiEnhancements() {
+    function initialize() {
+        const masterDataDetails =
+            document.getElementById("masterDataDetails");
+        const masterDataToggleState =
+            document.getElementById("masterDataToggleState");
+        const quickAddButton =
+            document.getElementById("openCustomStatusButton");
+        const statusPanel =
+            document.getElementById("statusMasterPanel");
+        const statusNameInput =
+            document.getElementById("newStatusName");
+        const partStatusDropdown =
+            document.getElementById("partStatusDropdown");
+
+        function updateMasterDataState() {
+            if (!masterDataToggleState || !masterDataDetails) {
+                return;
+            }
+
+            masterDataToggleState.textContent =
+                masterDataDetails.open
+                    ? "Zuklappen"
+                    : "Aufklappen";
+        }
+
+        if (masterDataDetails) {
+            updateMasterDataState();
+            masterDataDetails.addEventListener(
+                "toggle",
+                updateMasterDataState
+            );
+        }
+
+        if (!quickAddButton) {
+            return;
+        }
+
+        quickAddButton.addEventListener("click", () => {
+            if (partStatusDropdown) {
+                partStatusDropdown.open = false;
+            }
+
+            if (masterDataDetails) {
+                masterDataDetails.open = true;
+            }
+
+            window.requestAnimationFrame(() => {
+                if (statusPanel) {
+                    statusPanel.classList.add(
+                        "master-data-panel-attention"
+                    );
+
+                    window.setTimeout(() => {
+                        statusPanel.classList.remove(
+                            "master-data-panel-attention"
+                        );
+                    }, 1800);
+                }
+
+                if (statusNameInput) {
+                    statusNameInput.focus();
+                    statusNameInput.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center"
+                    });
+                }
+                else if (statusPanel) {
+                    statusPanel.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center"
+                    });
+                }
+            });
+        });
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener(
+            "DOMContentLoaded",
+            initialize,
+            { once: true }
+        );
+    }
+    else {
+        initialize();
+    }
+})();
+''', encoding='utf-8')
+          PY
+
+      - name: Validate UI files
+        shell: bash
+        run: |
+          node --check prototype/app.js
+          node --check prototype/ui-enhancements.js
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          from collections import Counter
+
+          html = Path('prototype/index.html').read_text(encoding='utf-8')
+          css = Path('prototype/styles.css').read_text(encoding='utf-8')
+
+          ids = re.findall(r'\bid="([^"]+)"', html)
+          duplicates = [value for value, count in Counter(ids).items() if count > 1]
+          if duplicates:
+              raise SystemExit(f'Duplicate HTML IDs: {duplicates}')
+
+          required_ids = {
+              'masterDataDetails',
+              'masterDataToggleState',
+              'openCustomStatusButton',
+              'statusMasterPanel',
+              'newStatusName'
+          }
+          missing = sorted(required_ids - set(ids))
+          if missing:
+              raise SystemExit(f'Missing required IDs: {missing}')
+
+          if './ui-enhancements.js' not in html:
+              raise SystemExit('ui-enhancements.js is not loaded')
+
+          if 'Collapsible master data + quick custom properties' not in css:
+              raise SystemExit('CSS enhancement marker missing')
+
+          if html.count('<details') != html.count('</details>'):
+              raise SystemExit('Unbalanced details tags')
+
+          print('Collapsible master data UI validation OK')
+          PY
+
+      - name: Remove temporary workflow and commit
+        shell: bash
+        run: |
+          rm -f .github/workflows/apply-collapsible-master-data.yml
+          git config user.name "Teiletracking Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Add collapsible master data and quick custom properties"
+          git push origin HEAD:ui/collapsible-master-data-custom-properties
