@@ -1,0 +1,62 @@
+name: Support QR and DataMatrix
+
+on:
+  push:
+    branches:
+      - scanner/support-qr-datamatrix
+    paths:
+      - ".github/workflows/support-qr-datamatrix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: scanner/support-qr-datamatrix
+          fetch-depth: 0
+
+      - name: Add DataMatrix support
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('prototype/scanner-service.js')
+          text = path.read_text(encoding='utf-8')
+          old = '''                        formats: [
+                            "QRCode"
+                        ],'''
+          new = '''                        formats: [
+                            "QRCode",
+                            "DataMatrix"
+                        ],'''
+          if old not in text:
+              raise SystemExit('ZXing format block not found')
+          text = text.replace(old, new, 1)
+          text = text.replace('"QR & Label scannen"', '"QR / DataMatrix & Label scannen"', 1)
+          text = text.replace('"QR-Code live erkannt."', '"2D-Code live erkannt."')
+          text = text.replace('"QR-Code erkannt. Jetzt Foto aufnehmen, damit die sichtbare Beschriftung per OCR geprüft wird."', '"QR-/DataMatrix-Code erkannt. Jetzt Foto aufnehmen, damit die sichtbare Beschriftung per OCR geprüft wird."')
+          text = text.replace('`QR live erkannt · ${engineMode} · ${new Date(lastLiveQrAt).toLocaleTimeString()}`', '`2D-Code live erkannt · ${engineMode} · ${new Date(lastLiveQrAt).toLocaleTimeString()}`')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          node --check prototype/scanner-service.js
+          grep -q '"DataMatrix"' prototype/scanner-service.js
+          grep -q 'QR / DataMatrix & Label scannen' prototype/scanner-service.js
+
+      - name: Remove workflow and commit
+        shell: bash
+        run: |
+          rm .github/workflows/support-qr-datamatrix.yml
+          git config user.name "Teiletracking Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add prototype/scanner-service.js .github/workflows/support-qr-datamatrix.yml
+          git commit -m "Support QR and DataMatrix codes"
+          git push origin scanner/support-qr-datamatrix
