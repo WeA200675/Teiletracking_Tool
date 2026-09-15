@@ -2208,3 +2208,122 @@ body.scanner-open {
         grid-template-columns: 1fr;
     }
 }
+
+
+/* Collapsible master data + quick custom properties */
+.master-data-card {
+    padding: 0;
+    overflow: hidden;
+}
+
+.master-data-details > summary {
+    list-style: none;
+}
+
+.master-data-details > summary::-webkit-details-marker {
+    display: none;
+}
+
+.master-data-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 13px 16px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.master-data-summary:hover {
+    background: #f7f8fa;
+}
+
+.master-data-summary > div {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+}
+
+.master-data-summary .eyebrow {
+    width: 100%;
+    margin: 0;
+}
+
+.master-data-summary-text {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.master-data-summary-arrow::after {
+    content: "▾";
+    color: var(--text-muted);
+    font-weight: 800;
+}
+
+.master-data-details[open] .master-data-summary-arrow::after {
+    content: "▴";
+}
+
+.master-data-details-content {
+    padding: 0 16px 16px;
+    border-top: 1px solid var(--border);
+}
+
+.master-data-details-content > .section-heading {
+    display: none;
+}
+
+.master-data-details-content > .master-data-intro {
+    margin-top: 12px;
+}
+
+.part-status-quick-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px 10px;
+    margin-top: 7px;
+}
+
+.part-status-quick-actions .hint {
+    margin: 0;
+}
+
+.part-status-quick-actions .button {
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: 0.78rem;
+}
+
+.status-master-panel.master-data-panel-attention {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgb(0 103 184 / 12%);
+}
+
+@media (max-width: 720px) {
+    .master-data-summary {
+        align-items: flex-start;
+        padding: 14px;
+    }
+
+    .master-data-summary > div {
+        display: grid;
+        gap: 3px;
+    }
+
+    .master-data-details-content {
+        padding: 0 14px 14px;
+    }
+
+    .part-status-quick-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .part-status-quick-actions .button {
+        width: 100%;
+        min-height: 42px;
+    }
+}
