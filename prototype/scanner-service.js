@@ -980,7 +980,8 @@
                     imageData,
                     {
                         formats: [
-                            "QRCode"
+                            "QRCode",
+                            "DataMatrix"
                         ],
                         tryHarder: true,
                         tryRotate: true,
@@ -1524,7 +1525,7 @@
 
         if (result) {
             result.textContent =
-                "QR-Code live erkannt.";
+                "2D-Code live erkannt.";
 
             result.classList.remove(
                 "error"
@@ -1537,7 +1538,7 @@
 
         if (status) {
             status.textContent =
-                "QR-Code erkannt. Jetzt Foto aufnehmen, damit die sichtbare Beschriftung per OCR geprüft wird.";
+                "QR-/DataMatrix-Code erkannt. Jetzt Foto aufnehmen, damit die sichtbare Beschriftung per OCR geprüft wird.";
 
             status.classList.remove(
                 "error"
@@ -1550,7 +1551,7 @@
 
         if (diagnostics) {
             diagnostics.textContent =
-                `QR live erkannt · ${engineMode} · ${new Date(lastLiveQrAt).toLocaleTimeString()}`;
+                `2D-Code live erkannt · ${engineMode} · ${new Date(lastLiveQrAt).toLocaleTimeString()}`;
 
             diagnostics.classList.add(
                 "good"
@@ -1763,7 +1764,7 @@
 
         if (title) {
             title.textContent =
-                "QR & Label scannen";
+                "QR / DataMatrix & Label scannen";
         }
 
         if (captureButton) {
