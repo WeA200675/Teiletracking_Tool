@@ -2327,3 +2327,29 @@ body.scanner-open {
         min-height: 42px;
     }
 }
+
+/* Five workflow blocks */
+.workflow-block { position: relative; margin-bottom: 20px; padding: 20px; border: 1px solid #d9e2ec; border-left: 6px solid #315f86; border-radius: 16px; box-shadow: 0 5px 18px rgba(32, 52, 72, 0.07); }
+.workflow-block:not(.workflow-block-5)::after { content: ""; position: absolute; left: 44px; bottom: -21px; width: 3px; height: 20px; border-radius: 999px; background: #c5d3df; }
+.workflow-block-heading { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; padding-bottom: 13px; border-bottom: 1px solid #e6edf3; }
+.workflow-block-heading h2 { margin: 0; }
+.workflow-block-heading .eyebrow { margin: 0 0 2px; }
+.workflow-step-number { display: grid; flex: 0 0 52px; width: 52px; height: 52px; place-items: center; border-radius: 14px; background: #315f86; color: #fff; font-size: 1.35rem; font-weight: 800; line-height: 1; box-shadow: 0 4px 12px rgba(49, 95, 134, 0.18); }
+.workflow-heading-main { min-width: 0; flex: 1 1 auto; }
+.workflow-block-5 .counter { margin-left: auto; }
+.workflow-subsection { margin-top: 16px; padding-top: 14px; border-top: 1px dashed #d7e1ea; }
+.workflow-subsection .master-data-details { margin: 0; }
+.workflow-actions { margin: 0; padding: 0; }
+.workflow-result { margin-top: 16px; padding: 16px; border: 1px solid #e1e8ee; border-radius: 12px; background: #f8fafc; }
+.workflow-block-4 { border-left-color: #6b5a2f; }
+.workflow-block-4 .workflow-step-number { background: #6b5a2f; }
+.workflow-block-5 { border-left-color: #3f6d55; }
+.workflow-block-5 .workflow-step-number { background: #3f6d55; }
+@media (max-width: 720px) {
+    .workflow-block { margin-bottom: 16px; padding: 14px; border-left-width: 4px; border-radius: 12px; }
+    .workflow-block:not(.workflow-block-5)::after { left: 31px; bottom: -17px; height: 16px; }
+    .workflow-block-heading { gap: 10px; margin-bottom: 14px; padding-bottom: 10px; }
+    .workflow-step-number { flex-basis: 42px; width: 42px; height: 42px; border-radius: 11px; font-size: 1.1rem; }
+    .workflow-block-heading h2 { font-size: 1.08rem; }
+    .workflow-block-5 .counter { align-self: flex-start; }
+}
