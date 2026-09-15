@@ -17,8 +17,14 @@
             <div id="dataStatus" class="data-status">Lade Testdaten …</div>
         </header>
 
-        <section class="card">
-            <h2>1. Fahrzeugzuordnung</h2>
+        <section class="card workflow-block workflow-block-1">
+            <div class="workflow-block-heading">
+                <span class="workflow-step-number">1</span>
+                <div>
+                    <p class="eyebrow">Schritt 1 von 5</p>
+                    <h2>Fahrzeugzuordnung</h2>
+                </div>
+            </div>
             <div class="form-grid assignment-grid">
                 <label class="field">
                     <span>Derivat</span>
@@ -65,10 +71,9 @@
                     </div>
                 </div>
             </div>
-        </section>
 
-        <section class="card master-data-card">
-            <details id="masterDataDetails" class="master-data-details">
+            <div class="workflow-subsection">
+                <details id="masterDataDetails" class="master-data-details">
                 <summary class="master-data-summary">
                     <div>
                         <span class="eyebrow">Stammdaten</span>
@@ -240,11 +245,18 @@
                 </section>
             </div>
                 </div>
-            </details>
+                </details>
+            </div>
         </section>
 
-        <section class="card">
-            <h2>2. Teileinformationen</h2>
+        <section class="card workflow-block workflow-block-2">
+            <div class="workflow-block-heading">
+                <span class="workflow-step-number">2</span>
+                <div>
+                    <p class="eyebrow">Schritt 2 von 5</p>
+                    <h2>Teileinformationen</h2>
+                </div>
+            </div>
 
             <div class="input-columns">
                 <label class="field">
@@ -407,7 +419,16 @@
             </p>
         </section>
 
-        <section class="actions">
+        <section class="card workflow-block workflow-block-3">
+            <div class="workflow-block-heading">
+                <span class="workflow-step-number">3</span>
+                <div>
+                    <p class="eyebrow">Schritt 3 von 5</p>
+                    <h2>Prüfen &amp; Speichern</h2>
+                </div>
+            </div>
+
+            <section class="actions workflow-actions">
             <button id="checkButton" class="button button-primary" type="button">Prüfen</button>
             <button id="saveButton" class="button button-secondary" type="button" disabled>
                 Lokal speichern
@@ -415,7 +436,7 @@
             <button id="resetButton" class="button button-ghost" type="button">Zurücksetzen</button>
         </section>
 
-        <section id="resultCard" class="card result-card hidden" aria-live="polite">
+            <section id="resultCard" class="result-card workflow-result hidden" aria-live="polite">
             <div class="result-header">
                 <div>
                     <p class="eyebrow">Prüfergebnis</p>
@@ -483,12 +504,14 @@
                 <div><dt>DeviceKey</dt><dd id="resultDeviceKey">–</dd></div>
                 <div><dt>AssignmentKey</dt><dd id="resultAssignmentKey">–</dd></div>
             </dl>
+            </section>
         </section>
 
-        <section class="card ats-transfer-card">
-            <div class="section-heading">
+        <section class="card workflow-block workflow-block-4 ats-transfer-card">
+            <div class="workflow-block-heading">
+                <span class="workflow-step-number">4</span>
                 <div>
-                    <p class="eyebrow">Zeitsparender Logistik-Workflow</p>
+                    <p class="eyebrow">Schritt 4 von 5 · Zeitsparender Logistik-Workflow</p>
                     <h2>ATS-Schnellübernahme</h2>
                 </div>
             </div>
@@ -534,10 +557,11 @@
             <div id="atsTransferMessage" class="tracking-transfer-message hidden" aria-live="polite"></div>
         </section>
 
-        <section class="card">
-            <div class="section-heading tracking-heading">
-                <div>
-                    <p class="eyebrow">Tracking-Historie</p>
+        <section class="card workflow-block workflow-block-5">
+            <div class="workflow-block-heading tracking-heading">
+                <span class="workflow-step-number">5</span>
+                <div class="workflow-heading-main">
+                    <p class="eyebrow">Schritt 5 von 5 · Tracking-Historie</p>
                     <h2>Teile und Steuergeräte</h2>
                 </div>
                 <span id="savedCount" class="counter">0</span>
