@@ -2353,3 +2353,42 @@ body.scanner-open {
     .workflow-block-heading h2 { font-size: 1.08rem; }
     .workflow-block-5 .counter { align-self: flex-start; }
 }
+
+/* Smartphone camera: full field of view */
+#scannerDialog video,
+#qrScannerDialog video,
+#scannerOverlay video,
+#qrScannerOverlay video,
+.scanner-dialog video,
+.scanner-camera-shell video,
+.camera-shell video,
+dialog video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    object-position: center center !important;
+    transform: none !important;
+}
+
+@media (max-width: 720px) {
+    .scanner-camera-shell,
+    .camera-shell {
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow: hidden !important;
+    }
+
+    #scannerDialog video,
+    #qrScannerDialog video,
+    #scannerOverlay video,
+    #qrScannerOverlay video,
+    .scanner-dialog video,
+    .scanner-camera-shell video,
+    .camera-shell video,
+    dialog video {
+        object-fit: contain !important;
+        object-position: center center !important;
+        transform: none !important;
+        max-width: 100% !important;
+    }
+}

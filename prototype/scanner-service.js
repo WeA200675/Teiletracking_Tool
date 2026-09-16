@@ -1411,14 +1411,8 @@
                             ideal:
                                 "environment"
                         },
-                        width: {
-                            ideal: 2560,
-                            min: 1280
-                        },
-                        height: {
-                            ideal: 1440,
-                            min: 720
-                        }
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
                     }
                 });
 
