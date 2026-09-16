@@ -65,6 +65,27 @@
             AllowValueOnNextLine: true,
             ValuePattern:
                 "[A-Z0-9][A-Z0-9._/\\-]*"
+        },
+        Engine: {
+            Primary: "PADDLEOCR",
+            Fallback: "TESSERACT",
+            PaddleOCR: {
+                ModuleUrl:
+                    "https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm",
+                OcrVersion: "PP-OCRv6",
+                Language: "en",
+                Backend: "wasm",
+                WasmPaths:
+                    "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/",
+                NumThreads: 1,
+                Simd: true,
+                TextDetectionBatchSize: 1,
+                TextRecognitionBatchSize: 8,
+                TextDetLimitSideLen: 1600,
+                TextDetBoxThresh: 0.38,
+                TextRecScoreThresh: 0.45,
+                MaximumPasses: 4
+            }
         }
     };
 
@@ -72,6 +93,9 @@
     let configSource = "DEFAULT";
     let worker = null;
     let workerPromise = null;
+    let paddleOcr = null;
+    let paddleOcrPromise = null;
+    let paddleModulePromise = null;
     let progressCallback = null;
     let passLabel = "";
 
@@ -210,6 +234,109 @@
                         "Ungültiges OCR-ValuePattern in ocr-config.json. Standardwert wird verwendet.",
                         error
                     );
+                }
+            }
+        }
+
+
+        const engine =
+            rawConfig.Engine;
+
+        if (
+            engine &&
+            typeof engine === "object"
+        ) {
+            if (
+                typeof engine.Primary ===
+                "string" &&
+                engine.Primary.trim()
+            ) {
+                normalized.Engine.Primary =
+                    engine.Primary
+                        .trim()
+                        .toUpperCase();
+            }
+
+            if (
+                typeof engine.Fallback ===
+                "string" &&
+                engine.Fallback.trim()
+            ) {
+                normalized.Engine.Fallback =
+                    engine.Fallback
+                        .trim()
+                        .toUpperCase();
+            }
+
+            const paddle =
+                engine.PaddleOCR;
+
+            if (
+                paddle &&
+                typeof paddle === "object"
+            ) {
+                const stringKeys = [
+                    "ModuleUrl",
+                    "OcrVersion",
+                    "Language",
+                    "Backend",
+                    "WasmPaths"
+                ];
+
+                for (
+                    const key of stringKeys
+                ) {
+                    if (
+                        typeof paddle[key] ===
+                            "string" &&
+                        paddle[key].trim()
+                    ) {
+                        normalized
+                            .Engine
+                            .PaddleOCR[key] =
+                                paddle[key]
+                                    .trim();
+                    }
+                }
+
+                const numberKeys = [
+                    "NumThreads",
+                    "TextDetectionBatchSize",
+                    "TextRecognitionBatchSize",
+                    "TextDetLimitSideLen",
+                    "TextDetBoxThresh",
+                    "TextRecScoreThresh",
+                    "MaximumPasses"
+                ];
+
+                for (
+                    const key of numberKeys
+                ) {
+                    if (
+                        Number.isFinite(
+                            Number(
+                                paddle[key]
+                            )
+                        )
+                    ) {
+                        normalized
+                            .Engine
+                            .PaddleOCR[key] =
+                                Number(
+                                    paddle[key]
+                                );
+                    }
+                }
+
+                if (
+                    typeof paddle.Simd ===
+                    "boolean"
+                ) {
+                    normalized
+                        .Engine
+                        .PaddleOCR
+                        .Simd =
+                            paddle.Simd;
                 }
             }
         }
@@ -1093,6 +1220,846 @@
         return score;
     }
 
+
+    function getPaddleConfig() {
+        return (
+            config &&
+            config.Engine &&
+            config.Engine.PaddleOCR
+                ? config.Engine.PaddleOCR
+                : DEFAULT_CONFIG
+                    .Engine
+                    .PaddleOCR
+        );
+    }
+
+    function getPrimaryEngine() {
+        return normalizeText(
+            config &&
+            config.Engine &&
+            config.Engine.Primary
+                ? config.Engine.Primary
+                : "PADDLEOCR"
+        );
+    }
+
+    function getFallbackEngine() {
+        return normalizeText(
+            config &&
+            config.Engine &&
+            config.Engine.Fallback
+                ? config.Engine.Fallback
+                : "TESSERACT"
+        );
+    }
+
+    function createRotatedCanvas(
+        sourceCanvas,
+        degrees
+    ) {
+        const normalizedDegrees =
+            (
+                (
+                    Number(degrees) % 360
+                ) +
+                360
+            ) % 360;
+
+        if (
+            normalizedDegrees === 0
+        ) {
+            return cloneCanvas(
+                sourceCanvas
+            ).canvas;
+        }
+
+        const swapSides =
+            normalizedDegrees === 90 ||
+            normalizedDegrees === 270;
+
+        const canvas =
+            document.createElement(
+                "canvas"
+            );
+
+        canvas.width =
+            swapSides
+                ? sourceCanvas.height
+                : sourceCanvas.width;
+
+        canvas.height =
+            swapSides
+                ? sourceCanvas.width
+                : sourceCanvas.height;
+
+        const context =
+            canvas.getContext(
+                "2d",
+                {
+                    willReadFrequently:
+                        true
+                }
+            );
+
+        if (!context) {
+            throw new Error(
+                "OCR-Bild konnte nicht gedreht werden."
+            );
+        }
+
+        context.translate(
+            canvas.width / 2,
+            canvas.height / 2
+        );
+
+        context.rotate(
+            normalizedDegrees *
+            Math.PI /
+            180
+        );
+
+        context.drawImage(
+            sourceCanvas,
+            -sourceCanvas.width / 2,
+            -sourceCanvas.height / 2
+        );
+
+        return canvas;
+    }
+
+    function createNeuralImageVariants(
+        sourceCanvas
+    ) {
+        const baseCanvas =
+            prepareBaseCanvas(
+                sourceCanvas
+            );
+
+        return [
+            {
+                name: "Original",
+                canvas: baseCanvas
+            },
+            {
+                name: "90° rechts",
+                canvas:
+                    createRotatedCanvas(
+                        baseCanvas,
+                        90
+                    )
+            },
+            {
+                name: "90° links",
+                canvas:
+                    createRotatedCanvas(
+                        baseCanvas,
+                        270
+                    )
+            },
+            {
+                name: "Graustufe + Kontrast",
+                canvas:
+                    createGrayscaleContrastCanvas(
+                        baseCanvas
+                    )
+            }
+        ];
+    }
+
+    function getPointY(point) {
+        if (
+            Array.isArray(point)
+        ) {
+            return Number(point[1]) || 0;
+        }
+
+        if (
+            point &&
+            typeof point === "object"
+        ) {
+            return (
+                Number(point.y) ||
+                Number(point.Y) ||
+                0
+            );
+        }
+
+        return 0;
+    }
+
+    function getPointX(point) {
+        if (
+            Array.isArray(point)
+        ) {
+            return Number(point[0]) || 0;
+        }
+
+        if (
+            point &&
+            typeof point === "object"
+        ) {
+            return (
+                Number(point.x) ||
+                Number(point.X) ||
+                0
+            );
+        }
+
+        return 0;
+    }
+
+    function getItemPosition(item) {
+        const poly =
+            item &&
+            Array.isArray(item.poly)
+                ? item.poly
+                : [];
+
+        if (
+            poly.length === 0
+        ) {
+            return {
+                x: 0,
+                y: 0
+            };
+        }
+
+        const x =
+            poly.reduce(
+                (
+                    sum,
+                    point
+                ) =>
+                    sum +
+                    getPointX(point),
+                0
+            ) /
+            poly.length;
+
+        const y =
+            poly.reduce(
+                (
+                    sum,
+                    point
+                ) =>
+                    sum +
+                    getPointY(point),
+                0
+            ) /
+            poly.length;
+
+        return {
+            x,
+            y
+        };
+    }
+
+    function normalizePaddleItems(
+        items
+    ) {
+        if (!Array.isArray(items)) {
+            return [];
+        }
+
+        return items
+            .map(item => {
+                const text =
+                    String(
+                        item &&
+                        item.text
+                            ? item.text
+                            : ""
+                    )
+                        .replace(
+                            /\s+/g,
+                            " "
+                        )
+                        .trim();
+
+                const score =
+                    Number(
+                        item &&
+                        item.score
+                    );
+
+                return {
+                    ...item,
+                    text,
+                    score:
+                        Number.isFinite(
+                            score
+                        )
+                            ? score
+                            : 0,
+                    position:
+                        getItemPosition(
+                            item
+                        )
+                };
+            })
+            .filter(
+                item =>
+                    Boolean(
+                        item.text
+                    )
+            )
+            .sort(
+                (
+                    left,
+                    right
+                ) => {
+                    const yDelta =
+                        left.position.y -
+                        right.position.y;
+
+                    if (
+                        Math.abs(
+                            yDelta
+                        ) >
+                        18
+                    ) {
+                        return yDelta;
+                    }
+
+                    return (
+                        left.position.x -
+                        right.position.x
+                    );
+                }
+            );
+    }
+
+    function getAveragePaddleConfidence(
+        items
+    ) {
+        if (
+            !Array.isArray(items) ||
+            items.length === 0
+        ) {
+            return 0;
+        }
+
+        let weighted = 0;
+        let totalWeight = 0;
+
+        for (const item of items) {
+            const length =
+                Math.max(
+                    1,
+                    String(
+                        item.text || ""
+                    ).length
+                );
+
+            weighted +=
+                Math.max(
+                    0,
+                    Math.min(
+                        1,
+                        Number(
+                            item.score
+                        ) || 0
+                    )
+                ) *
+                length;
+
+            totalWeight +=
+                length;
+        }
+
+        if (
+            totalWeight === 0
+        ) {
+            return 0;
+        }
+
+        return (
+            weighted /
+            totalWeight *
+            100
+        );
+    }
+
+    function getIndustrialTextQuality(
+        rawText
+    ) {
+        const lines =
+            String(
+                rawText || ""
+            )
+                .split(/\n+/)
+                .map(
+                    normalizeOcrLine
+                )
+                .filter(Boolean);
+
+        if (
+            lines.length === 0
+        ) {
+            return 0;
+        }
+
+        let score = 0;
+
+        for (const line of lines) {
+            const compact =
+                line
+                    .toUpperCase()
+                    .replace(
+                        /\s+/g,
+                        ""
+                    );
+
+            if (
+                /^[A-Z0-9._/\-]+$/
+                    .test(
+                        compact
+                    )
+            ) {
+                score += 8;
+            }
+
+            if (
+                /\d{1,2}\.\d{1,2}\.\d{4}/
+                    .test(
+                        compact
+                    )
+            ) {
+                score += 12;
+            }
+
+            if (
+                /[A-Z0-9]+-[A-Z0-9-]+/
+                    .test(
+                        compact
+                    )
+            ) {
+                score += 10;
+            }
+
+            if (
+                compact.length >= 6
+            ) {
+                score += 3;
+            }
+
+            const suspicious =
+                compact.replace(
+                    /[A-Z0-9._/\-]/g,
+                    ""
+                ).length;
+
+            score -=
+                suspicious * 3;
+        }
+
+        score +=
+            Math.min(
+                24,
+                lines.length * 4
+            );
+
+        return score;
+    }
+
+    function buildPaddleCandidate(
+        result,
+        variant,
+        qrData
+    ) {
+        const items =
+            normalizePaddleItems(
+                result &&
+                result.items
+            );
+
+        const rawText =
+            items
+                .map(
+                    item =>
+                        item.text
+                )
+                .join("\n");
+
+        const confidence =
+            getAveragePaddleConfidence(
+                items
+            );
+
+        const ocrData =
+            extractTrackingData(
+                rawText,
+                qrData
+            );
+
+        const missingFields =
+            getMissingFieldsForQr(
+                ocrData,
+                qrData
+            );
+
+        return {
+            engine: "PADDLEOCR",
+            variantName:
+                `PaddleOCR · ${variant.name}`,
+            rawText,
+            confidence,
+            ocrData,
+            missingFields,
+            complete:
+                missingFields.length === 0,
+            score:
+                getCandidateScore(
+                    ocrData,
+                    confidence
+                ) +
+                getIndustrialTextQuality(
+                    rawText
+                ),
+            lineItems:
+                items.map(
+                    item => ({
+                        text:
+                            item.text,
+                        score:
+                            item.score,
+                        poly:
+                            item.poly || null
+                    })
+                ),
+            metrics:
+                result &&
+                result.metrics
+                    ? {
+                        ...result.metrics
+                    }
+                    : null
+        };
+    }
+
+    async function loadPaddleModule() {
+        if (
+            paddleModulePromise
+        ) {
+            return paddleModulePromise;
+        }
+
+        const paddleConfig =
+            getPaddleConfig();
+
+        const moduleUrl =
+            String(
+                paddleConfig.ModuleUrl ||
+                ""
+            ).trim();
+
+        if (!moduleUrl) {
+            throw new Error(
+                "Für PaddleOCR ist keine ModuleUrl konfiguriert."
+            );
+        }
+
+        passLabel =
+            "PaddleOCR-Modul";
+
+        emitProgress({
+            stage: "engine",
+            status:
+                "PaddleOCR wird geladen …",
+            progress: 0
+        });
+
+        paddleModulePromise =
+            import(
+                moduleUrl
+            );
+
+        try {
+            return (
+                await paddleModulePromise
+            );
+        }
+        catch (error) {
+            paddleModulePromise =
+                null;
+
+            throw new Error(
+                `PaddleOCR konnte nicht geladen werden: ${
+                    error &&
+                    error.message
+                        ? error.message
+                        : error
+                }`
+            );
+        }
+    }
+
+    async function getPaddleOcr() {
+        if (paddleOcr) {
+            return paddleOcr;
+        }
+
+        if (
+            paddleOcrPromise
+        ) {
+            return paddleOcrPromise;
+        }
+
+        paddleOcrPromise =
+            (
+                async () => {
+                    const module =
+                        await loadPaddleModule();
+
+                    if (
+                        !module ||
+                        typeof module.PaddleOCR !==
+                            "function"
+                    ) {
+                        throw new Error(
+                            "Das geladene PaddleOCR-Modul stellt keine PaddleOCR-Klasse bereit."
+                        );
+                    }
+
+                    const paddleConfig =
+                        getPaddleConfig();
+
+                    passLabel =
+                        "PaddleOCR-Modell";
+
+                    emitProgress({
+                        stage: "engine",
+                        status:
+                            `PaddleOCR ${paddleConfig.OcrVersion} wird initialisiert …`,
+                        progress: 0.03
+                    });
+
+                    const instance =
+                        await module
+                            .PaddleOCR
+                            .create({
+                                lang:
+                                    paddleConfig.Language ||
+                                    "en",
+                                ocrVersion:
+                                    paddleConfig.OcrVersion ||
+                                    "PP-OCRv6",
+                                worker: false,
+                                textDetectionBatchSize:
+                                    Math.max(
+                                        1,
+                                        Math.round(
+                                            Number(
+                                                paddleConfig
+                                                    .TextDetectionBatchSize
+                                            ) ||
+                                            1
+                                        )
+                                    ),
+                                textRecognitionBatchSize:
+                                    Math.max(
+                                        1,
+                                        Math.round(
+                                            Number(
+                                                paddleConfig
+                                                    .TextRecognitionBatchSize
+                                            ) ||
+                                            8
+                                        )
+                                    ),
+                                ortOptions: {
+                                    backend:
+                                        paddleConfig.Backend ||
+                                        "wasm",
+                                    wasmPaths:
+                                        paddleConfig.WasmPaths ||
+                                        undefined,
+                                    numThreads:
+                                        Math.max(
+                                            1,
+                                            Math.round(
+                                                Number(
+                                                    paddleConfig
+                                                        .NumThreads
+                                                ) ||
+                                                1
+                                            )
+                                        ),
+                                    simd:
+                                        paddleConfig.Simd !==
+                                        false
+                                }
+                            });
+
+                    emitProgress({
+                        stage: "engine",
+                        status:
+                            "PaddleOCR ist bereit.",
+                        progress: 0.08
+                    });
+
+                    return instance;
+                }
+            )();
+
+        try {
+            paddleOcr =
+                await paddleOcrPromise;
+
+            return paddleOcr;
+        }
+        finally {
+            paddleOcrPromise =
+                null;
+        }
+    }
+
+    async function recognizeBestWithPaddle(
+        sourceCanvas,
+        qrData
+    ) {
+        const activeOcr =
+            await getPaddleOcr();
+
+        const paddleConfig =
+            getPaddleConfig();
+
+        const variants =
+            createNeuralImageVariants(
+                sourceCanvas
+            );
+
+        const maximumPasses =
+            Math.max(
+                1,
+                Math.min(
+                    variants.length,
+                    Math.round(
+                        Number(
+                            paddleConfig
+                                .MaximumPasses
+                        ) ||
+                        variants.length
+                    )
+                )
+            );
+
+        let bestCandidate = null;
+
+        for (
+            let index = 0;
+            index < maximumPasses;
+            index += 1
+        ) {
+            const variant =
+                variants[index];
+
+            passLabel =
+                `PaddleOCR ${index + 1}/${maximumPasses}: ${variant.name}`;
+
+            emitProgress({
+                stage: "variant",
+                status:
+                    `${passLabel} wird mit dem neuronalen OCR-Modell ausgewertet`,
+                progress:
+                    0.1 +
+                    (
+                        index /
+                        maximumPasses
+                    ) *
+                    0.82
+            });
+
+            const results =
+                await activeOcr.predict(
+                    variant.canvas,
+                    {
+                        textDetLimitSideLen:
+                            Math.max(
+                                640,
+                                Math.round(
+                                    Number(
+                                        paddleConfig
+                                            .TextDetLimitSideLen
+                                    ) ||
+                                    1600
+                                )
+                            ),
+                        textDetLimitType:
+                            "max",
+                        textDetBoxThresh:
+                            Math.max(
+                                0.05,
+                                Math.min(
+                                    0.95,
+                                    Number(
+                                        paddleConfig
+                                            .TextDetBoxThresh
+                                    ) ||
+                                    0.38
+                                )
+                            ),
+                        textRecScoreThresh:
+                            Math.max(
+                                0.05,
+                                Math.min(
+                                    0.95,
+                                    Number(
+                                        paddleConfig
+                                            .TextRecScoreThresh
+                                    ) ||
+                                    0.45
+                                )
+                            )
+                    }
+                );
+
+            const result =
+                Array.isArray(
+                    results
+                )
+                    ? results[0]
+                    : null;
+
+            const candidate =
+                buildPaddleCandidate(
+                    result,
+                    variant,
+                    qrData
+                );
+
+            if (
+                !bestCandidate ||
+                candidate.score >
+                bestCandidate.score
+            ) {
+                bestCandidate =
+                    candidate;
+            }
+
+            if (
+                candidate.complete &&
+                candidate.confidence >= 82
+            ) {
+                bestCandidate =
+                    candidate;
+
+                break;
+            }
+        }
+
+        if (
+            !bestCandidate ||
+            !bestCandidate.rawText
+        ) {
+            throw new Error(
+                "PaddleOCR konnte auf dem Label keinen verwertbaren Text erkennen."
+            );
+        }
+
+        return bestCandidate;
+    }
+
     function emitProgress(message) {
         if (
             typeof progressCallback ===
@@ -1162,19 +2129,10 @@
         }
     }
 
-    async function recognizeBest(
+    async function recognizeBestWithTesseract(
         sourceCanvas,
-        qrData,
-        options = {}
+        qrData
     ) {
-        progressCallback =
-            typeof options.onProgress ===
-            "function"
-                ? options.onProgress
-                : null;
-
-        passLabel = "";
-
         const activeWorker =
             await getWorker();
 
@@ -1246,8 +2204,9 @@
                 );
 
             const candidate = {
+                engine: "TESSERACT",
                 variantName:
-                    variant.name,
+                    `Tesseract · ${variant.name}`,
                 rawText,
                 confidence,
                 ocrData,
@@ -1279,7 +2238,6 @@
         }
 
         passLabel = "";
-        progressCallback = null;
 
         if (!bestCandidate) {
             throw new Error(
@@ -1290,9 +2248,129 @@
         return bestCandidate;
     }
 
+
+    async function recognizeBest(
+        sourceCanvas,
+        qrData,
+        options = {}
+    ) {
+        progressCallback =
+            typeof options.onProgress ===
+            "function"
+                ? options.onProgress
+                : null;
+
+        passLabel = "";
+
+        const primaryEngine =
+            getPrimaryEngine();
+
+        const fallbackEngine =
+            getFallbackEngine();
+
+        try {
+            if (
+                primaryEngine ===
+                "PADDLEOCR"
+            ) {
+                const result =
+                    await recognizeBestWithPaddle(
+                        sourceCanvas,
+                        qrData
+                    );
+
+                emitProgress({
+                    stage: "complete",
+                    status:
+                        "PaddleOCR-Auswertung abgeschlossen.",
+                    progress: 1
+                });
+
+                return result;
+            }
+
+            if (
+                primaryEngine ===
+                "TESSERACT"
+            ) {
+                return (
+                    await recognizeBestWithTesseract(
+                        sourceCanvas,
+                        qrData
+                    )
+                );
+            }
+
+            throw new Error(
+                `Unbekannte primäre OCR-Engine: ${primaryEngine}`
+            );
+        }
+        catch (primaryError) {
+            console.error(
+                "Primäre OCR-Engine fehlgeschlagen:",
+                primaryError
+            );
+
+            if (
+                fallbackEngine ===
+                    "TESSERACT" &&
+                primaryEngine !==
+                    "TESSERACT"
+            ) {
+                passLabel =
+                    "Fallback: Tesseract";
+
+                emitProgress({
+                    stage: "fallback",
+                    status:
+                        `PaddleOCR konnte nicht ausgeführt werden. Tesseract-Fallback startet: ${
+                            primaryError &&
+                            primaryError.message
+                                ? primaryError.message
+                                : primaryError
+                        }`,
+                    progress: 0
+                });
+
+                return (
+                    await recognizeBestWithTesseract(
+                        sourceCanvas,
+                        qrData
+                    )
+                );
+            }
+
+            throw primaryError;
+        }
+        finally {
+            passLabel = "";
+            progressCallback = null;
+        }
+    }
+
     async function terminate() {
         progressCallback = null;
         passLabel = "";
+
+        if (paddleOcr) {
+            const activePaddleOcr =
+                paddleOcr;
+
+            paddleOcr = null;
+            paddleOcrPromise = null;
+
+            try {
+                if (
+                    typeof activePaddleOcr.dispose ===
+                    "function"
+                ) {
+                    await activePaddleOcr.dispose();
+                }
+            }
+            catch {
+                // Beim Verlassen der Seite ist keine weitere Aktion nötig.
+            }
+        }
 
         if (worker) {
             const activeWorker = worker;
@@ -1313,6 +2391,8 @@
         recognizeBest,
         buildTrackingString,
         getMissingFieldsForQr,
+        getPrimaryEngine,
+        getFallbackEngine,
         terminate
     });
 })(window);
