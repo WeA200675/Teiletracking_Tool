@@ -1,6 +1,6 @@
 {
   "ProfileName": "Standard-Label",
-  "Version": 3,
+  "Version": 2,
   "Fields": {
     "PartNumber": {
       "Aliases": [
@@ -75,24 +75,5 @@
   "Parsing": {
     "AllowValueOnNextLine": true,
     "ValuePattern": "[A-Z0-9][A-Z0-9._/\\-]*"
-  },
-  "Engine": {
-    "Primary": "PADDLEOCR",
-    "Fallback": "TESSERACT",
-    "PaddleOCR": {
-      "ModuleUrl": "https://cdn.jsdelivr.net/npm/@paddleocr/paddleocr-js@0.4.2/+esm",
-      "OcrVersion": "PP-OCRv6",
-      "Language": "en",
-      "Backend": "wasm",
-      "WasmPaths": "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/",
-      "NumThreads": 1,
-      "Simd": true,
-      "TextDetectionBatchSize": 1,
-      "TextRecognitionBatchSize": 8,
-      "TextDetLimitSideLen": 1600,
-      "TextDetBoxThresh": 0.38,
-      "TextRecScoreThresh": 0.45,
-      "MaximumPasses": 4
-    }
   }
 }
