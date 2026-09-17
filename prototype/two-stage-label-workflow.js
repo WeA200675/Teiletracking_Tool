@@ -1,15 +1,13 @@
-(function initializeTwoStageLabelWorkflow(global) {
+(function initializeOnePhotoLabelWorkflow(global) {
     "use strict";
 
     const state = {
+        busy: false,
+        photoUrl: "",
         qrText: "",
-        qrReference: {
-            date: "",
-            partNumber: "",
-            serialNumber: ""
-        },
-        photoObjectUrl: "",
-        busy: false
+        qrVariant: "",
+        ocrPasses: [],
+        ocrLines: []
     };
 
     function byId(id) {
@@ -27,7 +25,7 @@
             .replace(/[^A-Z0-9]/g, "");
     }
 
-    function normalizeCommonOcrConfusions(value) {
+    function confusionNormalized(value) {
         return compact(value)
             .replace(/O/g, "0")
             .replace(/[IL]/g, "1")
@@ -35,223 +33,44 @@
             .replace(/B/g, "8");
     }
 
-    function setStatus(message, kind) {
-        const element = byId("twoStageWorkflowStatus");
+    function escapeHtml(value) {
+        return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function setStatus(message, kind = "") {
+        const element = byId("onePhotoStatus");
 
         if (!element) {
             return;
         }
 
         element.textContent = message || "";
-        element.className = "two-stage-status";
+        element.className = "one-photo-status";
 
         if (kind) {
-            element.classList.add(`two-stage-status-${kind}`);
-        }
-    }
-
-    function parseQrReference(text) {
-        const value = normalize(text);
-
-        const result = {
-            raw: value,
-            date: "",
-            partNumber: "",
-            serialNumber: ""
-        };
-
-        if (!value) {
-            return result;
-        }
-
-        const tokens = value
-            .split("_")
-            .map((item) => item.trim())
-            .filter(Boolean);
-
-        if (tokens.length >= 3) {
-            if (/^\d{2}\.\d{2}\.\d{4}$/.test(tokens[0])) {
-                result.date = tokens[0];
-            }
-
-            result.partNumber = tokens[1] || "";
-            result.serialNumber = tokens[2] || "";
-        }
-
-        return result;
-    }
-
-    function updateQrReferenceUi() {
-        const raw = byId("twoStageQrRaw");
-        const pn = byId("twoStageQrPartNumber");
-        const sn = byId("twoStageQrSerialNumber");
-
-        if (raw) {
-            raw.textContent = state.qrText || "–";
-        }
-
-        if (pn) {
-            pn.textContent = state.qrReference.partNumber || "–";
-        }
-
-        if (sn) {
-            sn.textContent = state.qrReference.serialNumber || "–";
-        }
-    }
-
-    function setQrValue(text) {
-        state.qrText = String(text || "").trim();
-        state.qrReference = parseQrReference(state.qrText);
-
-        const qrInput = byId("qrInput");
-
-        if (qrInput) {
-            qrInput.value = state.qrText;
-
-            qrInput.dispatchEvent(
-                new Event("input", {
-                    bubbles: true
-                })
+            element.classList.add(
+                `one-photo-status-${kind}`
             );
         }
-
-        updateQrReferenceUi();
-        updateVerificationReferenceUi();
     }
 
-    function readQrFromExistingField() {
-        const qrInput = byId("qrInput");
-
-        return qrInput
-            ? String(qrInput.value || "").trim()
-            : "";
-    }
-
-    function triggerExistingQrScanner() {
-        const button = byId("openQrScannerButton");
-
-        if (!button) {
-            throw new Error(
-                "Der vorhandene QR-/DataMatrix-Scanner wurde nicht gefunden."
-            );
-        }
-
-        button.click();
-    }
-
-    async function waitForQrResult(timeoutMs) {
-        const started = Date.now();
-
-        while (Date.now() - started < timeoutMs) {
-            const value = readQrFromExistingField();
-
-            if (value) {
-                return value;
-            }
-
-            const scanner = global.TeiletrackingScannerService;
-
-            if (
-                scanner &&
-                typeof scanner.getLiveQrText === "function"
-            ) {
-                const live = String(
-                    scanner.getLiveQrText() || ""
-                ).trim();
-
-                if (live) {
-                    return live;
-                }
-            }
-
-            await new Promise((resolve) => {
-                setTimeout(resolve, 250);
-            });
-        }
-
-        return "";
-    }
-
-    async function scanQrOnly() {
-        if (state.busy) {
-            return;
-        }
-
-        state.busy = true;
-
-        const button = byId("twoStageScanQrButton");
-
-        if (button) {
-            button.disabled = true;
-        }
-
-        try {
-            setStatus(
-                "QR / DataMatrix wird gelesen …",
-                "working"
-            );
-
-            const existing = readQrFromExistingField();
-
-            if (existing) {
-                setQrValue(existing);
-
-                setStatus(
-                    "Vorhandener QR-Wert übernommen. Jetzt Textfoto aufnehmen.",
-                    "success"
-                );
-
-                return;
-            }
-
-            triggerExistingQrScanner();
-
-            const result = await waitForQrResult(30000);
-
-            if (!result) {
-                setStatus(
-                    "Kein QR / DataMatrix erkannt. Bitte erneut versuchen.",
-                    "warning"
-                );
-
-                return;
-            }
-
-            setQrValue(result);
-
-            setStatus(
-                "QR / DataMatrix erkannt. Jetzt nur den gedruckten Text fotografieren.",
-                "success"
-            );
-        } catch (error) {
-            console.error(error);
-
-            setStatus(
-                error?.message || "QR-Scan fehlgeschlagen.",
-                "error"
-            );
-        } finally {
-            state.busy = false;
-
-            if (button) {
-                button.disabled = false;
-            }
-        }
-    }
-
-    function createNativePhotoInput() {
-        let input = byId("twoStageNativePhotoInput");
+    function createPhotoInput() {
+        let input = byId("onePhotoInput");
 
         if (input) {
             return input;
         }
 
         input = document.createElement("input");
-
-        input.id = "twoStageNativePhotoInput";
         input.type = "file";
         input.accept = "image/*";
         input.hidden = true;
+        input.id = "onePhotoInput";
 
         input.setAttribute(
             "capture",
@@ -260,7 +79,7 @@
 
         input.addEventListener(
             "change",
-            handleNativePhoto
+            handlePhoto
         );
 
         document.body.appendChild(input);
@@ -268,444 +87,33 @@
         return input;
     }
 
-    function loadImageFromFile(file) {
-        return new Promise((resolve, reject) => {
-            const url = URL.createObjectURL(file);
-            const image = new Image();
+    function parseQrTokens(text) {
+        const raw = normalize(text);
 
-            image.onload = function onLoad() {
-                resolve({
-                    image,
-                    url
-                });
-            };
-
-            image.onerror = function onError() {
-                URL.revokeObjectURL(url);
-
-                reject(
-                    new Error(
-                        "Das Textfoto konnte nicht geladen werden."
-                    )
-                );
-            };
-
-            image.src = url;
-        });
-    }
-
-    function drawImageToCanvas(image) {
-        const maxSide = 2600;
-
-        let width =
-            image.naturalWidth ||
-            image.width;
-
-        let height =
-            image.naturalHeight ||
-            image.height;
-
-        const scale = Math.min(
-            1,
-            maxSide / Math.max(width, height)
-        );
-
-        width = Math.max(
-            1,
-            Math.round(width * scale)
-        );
-
-        height = Math.max(
-            1,
-            Math.round(height * scale)
-        );
-
-        const canvas = document.createElement("canvas");
-
-        canvas.width = width;
-        canvas.height = height;
-
-        const context = canvas.getContext(
-            "2d",
-            {
-                alpha: false,
-                willReadFrequently: true
-            }
-        );
-
-        context.drawImage(
-            image,
-            0,
-            0,
-            width,
-            height
-        );
-
-        return canvas;
-    }
-
-    function rotateCanvas(source, degrees) {
-        const normalized =
-            ((degrees % 360) + 360) % 360;
-
-        if (normalized === 0) {
-            return source;
+        if (!raw) {
+            return [];
         }
 
-        const swap =
-            normalized === 90 ||
-            normalized === 270;
-
-        const canvas =
-            document.createElement("canvas");
-
-        canvas.width =
-            swap
-                ? source.height
-                : source.width;
-
-        canvas.height =
-            swap
-                ? source.width
-                : source.height;
-
-        const context =
-            canvas.getContext(
-                "2d",
-                {
-                    alpha: false,
-                    willReadFrequently: true
-                }
-            );
-
-        context.translate(
-            canvas.width / 2,
-            canvas.height / 2
-        );
-
-        context.rotate(
-            normalized *
-                Math.PI /
-                180
-        );
-
-        context.drawImage(
-            source,
-            -source.width / 2,
-            -source.height / 2
-        );
-
-        return canvas;
-    }
-
-    function cropCanvas(
-        source,
-        xRatio,
-        yRatio,
-        widthRatio,
-        heightRatio
-    ) {
-        const sx = Math.round(
-            source.width * xRatio
-        );
-
-        const sy = Math.round(
-            source.height * yRatio
-        );
-
-        const sw = Math.max(
-            1,
-            Math.round(
-                source.width * widthRatio
-            )
-        );
-
-        const sh = Math.max(
-            1,
-            Math.round(
-                source.height * heightRatio
-            )
-        );
-
-        const canvas =
-            document.createElement("canvas");
-
-        canvas.width = sw;
-        canvas.height = sh;
-
-        const context =
-            canvas.getContext(
-                "2d",
-                {
-                    alpha: false,
-                    willReadFrequently: true
-                }
-            );
-
-        context.drawImage(
-            source,
-            sx,
-            sy,
-            sw,
-            sh,
-            0,
-            0,
-            sw,
-            sh
-        );
-
-        return canvas;
-    }
-
-    function grayscaleContrastCanvas(
-        source,
-        contrastFactor
-    ) {
-        const canvas =
-            document.createElement("canvas");
-
-        canvas.width = source.width;
-        canvas.height = source.height;
-
-        const context =
-            canvas.getContext(
-                "2d",
-                {
-                    alpha: false,
-                    willReadFrequently: true
-                }
-            );
-
-        context.drawImage(
-            source,
-            0,
-            0
-        );
-
-        const imageData =
-            context.getImageData(
-                0,
-                0,
-                canvas.width,
-                canvas.height
-            );
-
-        const data =
-            imageData.data;
-
-        for (
-            let index = 0;
-            index < data.length;
-            index += 4
-        ) {
-            const gray =
-                Math.round(
-                    0.299 * data[index] +
-                    0.587 * data[index + 1] +
-                    0.114 * data[index + 2]
-                );
-
-            const adjusted =
-                Math.max(
-                    0,
-                    Math.min(
-                        255,
-                        Math.round(
-                            128 +
-                            (gray - 128) *
-                                contrastFactor
-                        )
-                    )
-                );
-
-            data[index] = adjusted;
-            data[index + 1] = adjusted;
-            data[index + 2] = adjusted;
-        }
-
-        context.putImageData(
-            imageData,
-            0,
-            0
-        );
-
-        return canvas;
-    }
-
-    function thresholdCanvas(
-        source,
-        threshold
-    ) {
-        const canvas =
-            document.createElement("canvas");
-
-        canvas.width = source.width;
-        canvas.height = source.height;
-
-        const context =
-            canvas.getContext(
-                "2d",
-                {
-                    alpha: false,
-                    willReadFrequently: true
-                }
-            );
-
-        context.drawImage(
-            source,
-            0,
-            0
-        );
-
-        const imageData =
-            context.getImageData(
-                0,
-                0,
-                canvas.width,
-                canvas.height
-            );
-
-        const data =
-            imageData.data;
-
-        for (
-            let index = 0;
-            index < data.length;
-            index += 4
-        ) {
-            const gray =
-                0.299 * data[index] +
-                0.587 * data[index + 1] +
-                0.114 * data[index + 2];
-
-            const value =
-                gray >= threshold
-                    ? 255
-                    : 0;
-
-            data[index] = value;
-            data[index + 1] = value;
-            data[index + 2] = value;
-        }
-
-        context.putImageData(
-            imageData,
-            0,
-            0
-        );
-
-        return canvas;
-    }
-
-    function buildVerificationVariants(source) {
-        const rotations = [
-            {
-                name: "0°",
-                canvas: rotateCanvas(source, 0)
-            },
-            {
-                name: "90°",
-                canvas: rotateCanvas(source, 90)
-            },
-            {
-                name: "180°",
-                canvas: rotateCanvas(source, 180)
-            },
-            {
-                name: "270°",
-                canvas: rotateCanvas(source, 270)
-            }
-        ];
-
-        const variants = [];
-
-        rotations.forEach((rotation) => {
-            variants.push({
-                name: `Original ${rotation.name}`,
-                canvas: rotation.canvas
-            });
-
-            const textCrop =
-                cropCanvas(
-                    rotation.canvas,
-                    0.10,
-                    0.05,
-                    0.85,
-                    0.90
-                );
-
-            variants.push({
-                name: `Text-Crop ${rotation.name}`,
-                canvas:
-                    grayscaleContrastCanvas(
-                        textCrop,
-                        1.7
-                    )
-            });
-        });
-
-        const baseGray =
-            grayscaleContrastCanvas(
-                source,
-                1.8
-            );
-
-        variants.push({
-            name: "Kontrast",
-            canvas: baseGray
-        });
-
-        variants.push({
-            name: "Schwarz/Weiß",
-            canvas: thresholdCanvas(
-                baseGray,
-                155
-            )
-        });
-
-        return variants;
-    }
-
-    function extractOcrText(result) {
-        if (!result) {
-            return "";
-        }
-
-        const candidates = [
-            result.text,
-            result.rawText,
-            result.ocrText,
-            result.bestText
-        ];
-
-        for (const candidate of candidates) {
-            if (
-                typeof candidate ===
-                    "string" &&
-                candidate.trim()
-            ) {
-                return candidate.trim();
-            }
-        }
-
-        if (
-            result.data &&
-            typeof result.data.text ===
-                "string"
-        ) {
-            return result.data.text.trim();
-        }
-
-        return "";
-    }
-
-    function tokenize(text) {
-        return normalize(text)
-            .split(
-                /[^A-Z0-9._/-]+/
-            )
+        const parts = raw
+            .split(/[_;\n|]+/)
             .map((value) => value.trim())
             .filter(Boolean);
+
+        const unique = [];
+        const seen = new Set();
+
+        for (const part of parts) {
+            const key = normalize(part);
+
+            if (!key || seen.has(key)) {
+                continue;
+            }
+
+            seen.add(key);
+            unique.push(part);
+        }
+
+        return unique;
     }
 
     function levenshtein(left, right) {
@@ -721,9 +129,7 @@
         }
 
         const row = Array.from(
-            {
-                length: b.length + 1
-            },
+            { length: b.length + 1 },
             (_, index) => index
         );
 
@@ -743,17 +149,15 @@
                 const old = row[j];
 
                 const cost =
-                    a[i - 1] ===
-                    b[j - 1]
+                    a[i - 1] === b[j - 1]
                         ? 0
                         : 1;
 
-                row[j] =
-                    Math.min(
-                        row[j] + 1,
-                        row[j - 1] + 1,
-                        previous + cost
-                    );
+                row[j] = Math.min(
+                    row[j] + 1,
+                    row[j - 1] + 1,
+                    previous + cost
+                );
 
                 previous = old;
             }
@@ -762,151 +166,359 @@
         return row[b.length];
     }
 
-    function verifyReference(
-        reference,
-        ocrText
+    function getLineCandidates(line) {
+        const candidates = [
+            normalize(line)
+        ];
+
+        const words = normalize(line)
+            .split(/[^A-Z0-9._/-]+/)
+            .map((value) => value.trim())
+            .filter(Boolean);
+
+        candidates.push(...words);
+
+        return Array.from(
+            new Set(candidates)
+        );
+    }
+
+    function compareLineWithQr(
+        line,
+        qrTokens
     ) {
-        const wanted =
-            normalize(reference);
+        const candidates =
+            getLineCandidates(line);
 
-        if (!wanted) {
-            return {
-                level: "UNKNOWN",
-                matchedValue: "",
-                reason:
-                    "Kein Referenzwert im QR-Code."
-            };
-        }
+        let fuzzy = null;
 
-        const wantedCompact =
-            compact(wanted);
-
-        const wantedConfusion =
-            normalizeCommonOcrConfusions(
-                wanted
-            );
-
-        const tokens =
-            tokenize(ocrText);
-
-        for (const token of tokens) {
-            if (
-                compact(token) ===
-                wantedCompact
-            ) {
-                return {
-                    level: "GREEN",
-                    matchedValue: token,
-                    reason:
-                        "Exakt im Drucktext erkannt."
-                };
-            }
-        }
-
-        for (const token of tokens) {
-            if (
-                normalizeCommonOcrConfusions(
-                    token
-                ) ===
-                wantedConfusion
-            ) {
-                return {
-                    level: "GREEN",
-                    matchedValue: token,
-                    reason:
-                        "Mit typischer OCR-Zeichenverwechslung eindeutig bestätigt."
-                };
-            }
-        }
-
-        let bestToken = "";
-        let bestDistance =
-            Number.POSITIVE_INFINITY;
-
-        for (const token of tokens) {
-            const tokenCompact =
-                compact(token);
+        for (const qrToken of qrTokens) {
+            const qrCompact =
+                compact(qrToken);
 
             if (
-                Math.abs(
-                    tokenCompact.length -
-                    wantedCompact.length
-                ) > 2
+                !qrCompact ||
+                qrCompact.length < 3
             ) {
                 continue;
             }
 
-            const distance =
-                levenshtein(
-                    wanted,
-                    token
-                );
+            for (const candidate of candidates) {
+                const candidateCompact =
+                    compact(candidate);
 
-            if (
-                distance <
-                bestDistance
-            ) {
-                bestDistance =
-                    distance;
+                if (
+                    candidateCompact ===
+                    qrCompact
+                ) {
+                    return {
+                        level: "CONFIRMED",
+                        qrToken,
+                        candidate,
+                        reason:
+                            "Durch QR/DataMatrix exakt bestätigt."
+                    };
+                }
 
-                bestToken =
-                    token;
+                if (
+                    candidateCompact.length >=
+                        qrCompact.length &&
+                    candidateCompact.includes(
+                        qrCompact
+                    )
+                ) {
+                    return {
+                        level: "CONFIRMED",
+                        qrToken,
+                        candidate,
+                        reason:
+                            "QR-Wert vollständig in der OCR-Zeile enthalten."
+                    };
+                }
             }
         }
 
-        if (
-            bestToken &&
-            bestDistance <= 1
-        ) {
-            return {
-                level: "YELLOW",
-                matchedValue: bestToken,
-                reason:
-                    "Sehr ähnlich erkannt, aber nicht eindeutig."
-            };
+        for (const qrToken of qrTokens) {
+            const qrCompact =
+                compact(qrToken);
+
+            if (qrCompact.length < 5) {
+                continue;
+            }
+
+            const qrConfusion =
+                confusionNormalized(
+                    qrToken
+                );
+
+            for (const candidate of candidates) {
+                const candidateCompact =
+                    compact(candidate);
+
+                if (
+                    Math.abs(
+                        candidateCompact.length -
+                        qrCompact.length
+                    ) > 2
+                ) {
+                    continue;
+                }
+
+                if (
+                    confusionNormalized(
+                        candidate
+                    ) === qrConfusion
+                ) {
+                    return {
+                        level: "SIMILAR",
+                        qrToken,
+                        candidate,
+                        reason:
+                            "Passt nach typischer OCR-Zeichenverwechslung zum QR-Wert."
+                    };
+                }
+
+                const distance =
+                    levenshtein(
+                        candidate,
+                        qrToken
+                    );
+
+                if (
+                    distance <= 1 &&
+                    (
+                        !fuzzy ||
+                        distance <
+                            fuzzy.distance
+                    )
+                ) {
+                    fuzzy = {
+                        level: "SIMILAR",
+                        qrToken,
+                        candidate,
+                        distance,
+                        reason:
+                            "Sehr ähnlich zum QR-Wert."
+                    };
+                }
+            }
         }
 
-        if (
-            bestToken &&
-            bestDistance === 2 &&
-            wantedCompact.length >= 8
-        ) {
-            return {
-                level: "YELLOW",
-                matchedValue: bestToken,
-                reason:
-                    "Ähnlicher OCR-Wert gefunden. Manuelle Sichtprüfung empfohlen."
-            };
+        if (fuzzy) {
+            return fuzzy;
         }
 
         return {
-            level: "RED",
-            matchedValue:
-                bestToken,
+            level: "OCR_ONLY",
+            qrToken: "",
+            candidate: "",
             reason:
-                "QR-Referenz konnte im Drucktext nicht sicher gefunden werden."
+                "OCR-Inhalt ist nicht im QR/DataMatrix-Code enthalten."
         };
     }
 
-    function scoreVerification(
-        pn,
-        sn
+    function splitOcrLines(text) {
+        return String(text || "")
+            .split(/\r?\n/)
+            .map((value) =>
+                value
+                    .replace(/\s+/g, " ")
+                    .trim()
+            )
+            .filter((value) => {
+                if (!value) {
+                    return false;
+                }
+
+                return /[A-Z0-9]/i.test(
+                    value
+                );
+            });
+    }
+
+    function mergeOcrLines(passes) {
+        const result = [];
+        const seen = new Set();
+
+        for (const pass of passes) {
+            const lines =
+                splitOcrLines(
+                    pass.rawText
+                );
+
+            for (const line of lines) {
+                const key =
+                    normalize(line);
+
+                if (
+                    !key ||
+                    seen.has(key)
+                ) {
+                    continue;
+                }
+
+                seen.add(key);
+
+                result.push({
+                    text: line,
+                    sources: [
+                        pass.variant
+                    ]
+                });
+            }
+        }
+
+        return result;
+    }
+
+    function extractRawText(result) {
+        if (!result) {
+            return "";
+        }
+
+        if (
+            typeof result.rawText ===
+            "string"
+        ) {
+            return result.rawText.trim();
+        }
+
+        if (
+            typeof result.text ===
+            "string"
+        ) {
+            return result.text.trim();
+        }
+
+        if (
+            result.data &&
+            typeof result.data.text ===
+                "string"
+        ) {
+            return result.data.text.trim();
+        }
+
+        return "";
+    }
+
+    async function detectCode(
+        prepared
     ) {
-        const scoreMap = {
-            GREEN: 100,
-            YELLOW: 40,
-            RED: 0,
-            UNKNOWN: 0
-        };
+        const scanner =
+            global.TeiletrackingScannerService;
 
-        return (
-            (scoreMap[pn.level] || 0) +
-            (scoreMap[sn.level] || 0)
-        );
+        if (
+            !scanner ||
+            typeof scanner.detectQr !==
+                "function"
+        ) {
+            throw new Error(
+                "QR/DataMatrix-Service ist nicht verfügbar."
+            );
+        }
+
+        const variants =
+            prepared.codeVariants || [];
+
+        for (
+            let index = 0;
+            index < variants.length;
+            index += 1
+        ) {
+            const variant =
+                variants[index];
+
+            setStatus(
+                `QR/DataMatrix-Suche ${index + 1}/${variants.length}: ${variant.name}`,
+                "working"
+            );
+
+            try {
+                const context =
+                    variant.canvas.getContext(
+                        "2d",
+                        {
+                            willReadFrequently:
+                                true
+                        }
+                    );
+
+                const value =
+                    await scanner.detectQr(
+                        variant.canvas,
+                        context,
+                        {
+                            ignoreLiveCache:
+                                true
+                        }
+                    );
+
+                if (value) {
+                    return {
+                        value:
+                            String(
+                                value
+                            ).trim(),
+                        variant:
+                            variant.name
+                    };
+                }
+            } catch (error) {
+                console.warn(
+                    `Code-Variante ${variant.name} fehlgeschlagen.`,
+                    error
+                );
+            }
+        }
+
+        return {
+            value: "",
+            variant: ""
+        };
     }
 
-    async function runVerificationOcr(
-        sourceCanvas
+    function selectOcrVariants(
+        prepared
+    ) {
+        const variants =
+            prepared.ocrVariants || [];
+
+        const preferredNames = [
+            "original-0-gray",
+            "original-90-gray",
+            "original-270-gray",
+            "original-0-center-crop",
+            "original-90-center-crop",
+            "original-270-center-crop"
+        ];
+
+        const selected = [];
+
+        for (const name of preferredNames) {
+            const found =
+                variants.find(
+                    (variant) =>
+                        variant.name ===
+                        name
+                );
+
+            if (found) {
+                selected.push(found);
+            }
+        }
+
+        if (!selected.length) {
+            return variants.slice(
+                0,
+                6
+            );
+        }
+
+        return selected;
+    }
+
+    async function readCompleteOcr(
+        prepared
     ) {
         const ocr =
             global.TeiletrackingOcrService;
@@ -922,12 +534,11 @@
         }
 
         const variants =
-            buildVerificationVariants(
-                sourceCanvas
+            selectOcrVariants(
+                prepared
             );
 
-        let best = null;
-        let combinedRawText = [];
+        const passes = [];
 
         for (
             let index = 0;
@@ -938,326 +549,385 @@
                 variants[index];
 
             setStatus(
-                `Verifikations-OCR: ${variant.name} (${index + 1}/${variants.length})`,
+                `OCR ${index + 1}/${variants.length}: ${variant.name}`,
                 "working"
             );
 
             try {
                 const result =
                     await ocr.recognizeBest(
-                        variant.canvas
+                        variant.canvas,
+                        {},
+                        {
+                            onProgress:
+                                (progress) => {
+                                    if (
+                                        progress &&
+                                        progress.status
+                                    ) {
+                                        setStatus(
+                                            `OCR ${index + 1}/${variants.length}: ${progress.status}`,
+                                            "working"
+                                        );
+                                    }
+                                }
+                        }
                     );
 
-                const text =
-                    extractOcrText(
+                const rawText =
+                    extractRawText(
                         result
                     );
 
-                if (text) {
-                    combinedRawText.push(
-                        `--- ${variant.name} ---\n${text}`
-                    );
-                }
-
-                const pn =
-                    verifyReference(
-                        state.qrReference
-                            .partNumber,
-                        text
-                    );
-
-                const sn =
-                    verifyReference(
-                        state.qrReference
-                            .serialNumber,
-                        text
-                    );
-
-                const score =
-                    scoreVerification(
-                        pn,
-                        sn
-                    );
-
-                if (
-                    !best ||
-                    score > best.score
-                ) {
-                    best = {
-                        name:
+                if (rawText) {
+                    passes.push({
+                        variant:
                             variant.name,
-                        text,
-                        pn,
-                        sn,
-                        score
-                    };
-                }
-
-                if (
-                    pn.level === "GREEN" &&
-                    sn.level === "GREEN"
-                ) {
-                    break;
+                        confidence:
+                            Number(
+                                result.confidence ||
+                                0
+                            ),
+                        rawText
+                    });
                 }
             } catch (error) {
                 console.warn(
-                    `OCR-Variante ${variant.name} fehlgeschlagen.`,
+                    `OCR-Pass ${variant.name} fehlgeschlagen.`,
                     error
                 );
             }
         }
 
-        if (!best) {
+        if (!passes.length) {
             throw new Error(
-                "Keine OCR-Variante konnte ausgewertet werden."
+                "Aus dem Foto konnte kein OCR-Text gelesen werden."
             );
         }
 
-        best.allRawText =
-            combinedRawText.join(
-                "\n\n"
-            );
-
-        return best;
+        return passes;
     }
 
-    function overallLevel(result) {
-        const levels = [
-            result.pn.level,
-            result.sn.level
-        ];
-
-        if (
-            levels.every(
-                (level) =>
-                    level === "GREEN"
-            )
-        ) {
-            return "GREEN";
-        }
-
-        if (
-            levels.includes("RED")
-        ) {
-            return "RED";
-        }
-
-        return "YELLOW";
-    }
-
-    function levelLabel(level) {
-        switch (level) {
-            case "GREEN":
-                return "GRÜN";
-            case "YELLOW":
-                return "GELB";
-            case "RED":
-                return "ROT";
-            default:
-                return "UNBEKANNT";
-        }
-    }
-
-    function updateVerificationReferenceUi() {
-        const pn =
-            byId(
-                "verificationReferencePartNumber"
-            );
-
-        const sn =
-            byId(
-                "verificationReferenceSerialNumber"
-            );
-
-        if (pn) {
-            pn.textContent =
-                state.qrReference
-                    .partNumber ||
-                "–";
-        }
-
-        if (sn) {
-            sn.textContent =
-                state.qrReference
-                    .serialNumber ||
-                "–";
-        }
-    }
-
-    function updateVerificationRow(
-        prefix,
-        reference,
-        result
+    function evaluateLines(
+        lines,
+        qrTokens
     ) {
-        const referenceElement =
-            byId(
-                `${prefix}Reference`
-            );
-
-        const detectedElement =
-            byId(
-                `${prefix}Detected`
-            );
-
-        const statusElement =
-            byId(
-                `${prefix}Status`
-            );
-
-        const reasonElement =
-            byId(
-                `${prefix}Reason`
-            );
-
-        if (referenceElement) {
-            referenceElement.textContent =
-                reference || "–";
-        }
-
-        if (detectedElement) {
-            detectedElement.textContent =
-                result.matchedValue ||
-                "–";
-        }
-
-        if (statusElement) {
-            statusElement.textContent =
-                levelLabel(
-                    result.level
+        return lines.map((line) => {
+            const comparison =
+                compareLineWithQr(
+                    line.text,
+                    qrTokens
                 );
 
-            statusElement.className =
-                `verification-badge verification-${result.level.toLowerCase()}`;
-        }
+            return {
+                ...line,
+                ...comparison
+            };
+        });
+    }
 
-        if (reasonElement) {
-            reasonElement.textContent =
-                result.reason || "";
+    function evaluateQrTokens(
+        qrTokens,
+        ocrLines
+    ) {
+        return qrTokens.map(
+            (qrToken) => {
+                let best = null;
+
+                for (const line of ocrLines) {
+                    const comparison =
+                        compareLineWithQr(
+                            line.text,
+                            [qrToken]
+                        );
+
+                    if (
+                        comparison.level ===
+                        "CONFIRMED"
+                    ) {
+                        return {
+                            token:
+                                qrToken,
+                            level:
+                                "CONFIRMED",
+                            ocrLine:
+                                line.text
+                        };
+                    }
+
+                    if (
+                        comparison.level ===
+                            "SIMILAR" &&
+                        !best
+                    ) {
+                        best = {
+                            token:
+                                qrToken,
+                            level:
+                                "SIMILAR",
+                            ocrLine:
+                                line.text
+                        };
+                    }
+                }
+
+                return (
+                    best || {
+                        token:
+                            qrToken,
+                        level:
+                            "NOT_FOUND",
+                        ocrLine: ""
+                    }
+                );
+            }
+        );
+    }
+
+    function badgeText(level) {
+        switch (level) {
+            case "CONFIRMED":
+                return "✓ QR bestätigt";
+
+            case "SIMILAR":
+                return "? ähnlich";
+
+            case "OCR_ONLY":
+                return "○ nur OCR";
+
+            case "NOT_FOUND":
+                return "– nicht erkannt";
+
+            default:
+                return level;
         }
     }
 
-    function applyVerificationResult(
-        result
-    ) {
-        const overall =
-            overallLevel(result);
+    function badgeClass(level) {
+        switch (level) {
+            case "CONFIRMED":
+                return "confirmed";
 
-        updateVerificationRow(
-            "verificationPn",
-            state.qrReference
-                .partNumber,
-            result.pn
-        );
+            case "SIMILAR":
+                return "similar";
 
-        updateVerificationRow(
-            "verificationSn",
-            state.qrReference
-                .serialNumber,
-            result.sn
-        );
+            case "NOT_FOUND":
+                return "missing";
 
-        const overallBadge =
-            byId(
-                "verificationOverallStatus"
+            default:
+                return "ocr-only";
+        }
+    }
+
+    function renderResults() {
+        const qrTokens =
+            parseQrTokens(
+                state.qrText
             );
 
-        const variant =
+        const evaluated =
+            evaluateLines(
+                state.ocrLines,
+                qrTokens
+            );
+
+        const qrEvaluation =
+            evaluateQrTokens(
+                qrTokens,
+                state.ocrLines
+            );
+
+        const qrRaw =
+            byId("onePhotoQrRaw");
+
+        const qrVariant =
             byId(
-                "verificationVariant"
+                "onePhotoQrVariant"
+            );
+
+        const ocrBody =
+            byId(
+                "onePhotoOcrLines"
+            );
+
+        const qrBody =
+            byId(
+                "onePhotoQrTokens"
             );
 
         const raw =
             byId(
-                "verificationRawText"
+                "onePhotoRawOcr"
             );
 
-        if (overallBadge) {
-            overallBadge.textContent =
-                levelLabel(overall);
+        const summary =
+            byId(
+                "onePhotoSummary"
+            );
 
-            overallBadge.className =
-                `verification-badge verification-${overall.toLowerCase()}`;
+        if (qrRaw) {
+            qrRaw.textContent =
+                state.qrText ||
+                "Kein QR/DataMatrix erkannt";
         }
 
-        if (variant) {
-            variant.textContent =
-                result.name || "–";
+        if (qrVariant) {
+            qrVariant.textContent =
+                state.qrVariant || "–";
+        }
+
+        if (ocrBody) {
+            ocrBody.innerHTML =
+                evaluated
+                    .map((line) => `
+                        <div class="one-photo-line">
+                            <div class="one-photo-line-text">
+                                ${escapeHtml(line.text)}
+                            </div>
+
+                            <div>
+                                <span class="one-photo-badge ${badgeClass(line.level)}">
+                                    ${escapeHtml(badgeText(line.level))}
+                                </span>
+
+                                ${
+                                    line.qrToken
+                                        ? `
+                                            <small>
+                                                QR: ${escapeHtml(line.qrToken)}
+                                            </small>
+                                          `
+                                        : ""
+                                }
+                            </div>
+                        </div>
+                    `)
+                    .join("");
+        }
+
+        if (qrBody) {
+            if (!qrEvaluation.length) {
+                qrBody.innerHTML = `
+                    <p class="hint">
+                        Kein QR/DataMatrix-Code erkannt.
+                        OCR-Inhalte bleiben trotzdem erhalten.
+                    </p>
+                `;
+            } else {
+                qrBody.innerHTML =
+                    qrEvaluation
+                        .map((item) => `
+                            <div class="one-photo-token-row">
+                                <code>${escapeHtml(item.token)}</code>
+
+                                <span class="one-photo-badge ${badgeClass(item.level)}">
+                                    ${escapeHtml(badgeText(item.level))}
+                                </span>
+
+                                ${
+                                    item.ocrLine
+                                        ? `
+                                            <small>
+                                                OCR: ${escapeHtml(item.ocrLine)}
+                                            </small>
+                                          `
+                                        : ""
+                                }
+                            </div>
+                        `)
+                        .join("");
+            }
         }
 
         if (raw) {
             raw.textContent =
-                result.allRawText ||
-                result.text ||
-                "";
+                state.ocrPasses
+                    .map(
+                        (pass) =>
+                            `--- ${pass.variant} ---\n${pass.rawText}`
+                    )
+                    .join(
+                        "\n\n"
+                    );
+        }
+
+        const confirmed =
+            evaluated.filter(
+                (line) =>
+                    line.level ===
+                    "CONFIRMED"
+            ).length;
+
+        const similar =
+            evaluated.filter(
+                (line) =>
+                    line.level ===
+                    "SIMILAR"
+            ).length;
+
+        const ocrOnly =
+            evaluated.filter(
+                (line) =>
+                    line.level ===
+                    "OCR_ONLY"
+            ).length;
+
+        if (summary) {
+            summary.textContent =
+                `${evaluated.length} OCR-Zeilen · ${confirmed} durch QR bestätigt · ${similar} ähnlich · ${ocrOnly} nur im Drucktext`;
         }
 
         const panel =
             byId(
-                "verificationResultPanel"
+                "onePhotoResults"
             );
 
         if (panel) {
             panel.hidden = false;
         }
-
-        if (overall === "GREEN") {
-            setStatus(
-                "GRÜN: PN und SN wurden im gedruckten Text bestätigt.",
-                "success"
-            );
-        } else if (
-            overall === "YELLOW"
-        ) {
-            setStatus(
-                "GELB: OCR ist ähnlich, aber mindestens ein Wert muss kurz geprüft werden.",
-                "warning"
-            );
-        } else {
-            setStatus(
-                "ROT: Mindestens ein QR-Wert konnte im gedruckten Text nicht bestätigt werden.",
-                "error"
-            );
-        }
     }
 
-    function updatePhotoPreview(
-        file,
-        url
-    ) {
-        const preview =
-            byId(
-                "capturedLabelPreview"
+    function showPreview(file) {
+        if (state.photoUrl) {
+            URL.revokeObjectURL(
+                state.photoUrl
             );
+        }
+
+        state.photoUrl =
+            URL.createObjectURL(file);
 
         const image =
             byId(
-                "capturedLabelImage"
+                "onePhotoPreviewImage"
+            );
+
+        const panel =
+            byId(
+                "onePhotoPreview"
             );
 
         const info =
             byId(
-                "capturedLabelInfo"
+                "onePhotoPreviewInfo"
             );
-
-        if (preview) {
-            preview.classList.remove(
-                "hidden"
-            );
-        }
 
         if (image) {
-            image.src = url;
+            image.src =
+                state.photoUrl;
         }
 
         if (info) {
             info.textContent =
-                `Separates Textfoto · ${Math.round(file.size / 1024)} KB`;
+                `${file.name || "Smartphone-Foto"} · ${Math.round(file.size / 1024)} KB`;
+        }
+
+        if (panel) {
+            panel.hidden = false;
         }
     }
 
-    async function handleNativePhoto(
-        event
-    ) {
+    async function handlePhoto(event) {
         const input =
             event.currentTarget;
 
@@ -1269,57 +939,87 @@
             return;
         }
 
+        if (state.busy) {
+            return;
+        }
+
         state.busy = true;
 
         try {
-            if (
-                state.photoObjectUrl
-            ) {
-                URL.revokeObjectURL(
-                    state.photoObjectUrl
-                );
+            const vision =
+                global.TeiletrackingVisionPreprocessor;
 
-                state.photoObjectUrl =
-                    "";
+            if (
+                !vision ||
+                typeof vision.prepareFile !==
+                    "function"
+            ) {
+                throw new Error(
+                    "Vision-Preprocessor ist nicht geladen."
+                );
             }
 
+            showPreview(file);
+
             setStatus(
-                "Textfoto wird vorbereitet …",
+                "Foto wird für QR/DataMatrix und OCR aufbereitet …",
                 "working"
             );
 
-            const loaded =
-                await loadImageFromFile(
+            const prepared =
+                await vision.prepareFile(
                     file
                 );
 
-            state.photoObjectUrl =
-                loaded.url;
-
-            updatePhotoPreview(
-                file,
-                loaded.url
-            );
-
-            const canvas =
-                drawImageToCanvas(
-                    loaded.image
+            const code =
+                await detectCode(
+                    prepared
                 );
 
-            const verification =
-                await runVerificationOcr(
-                    canvas
+            state.qrText =
+                code.value;
+
+            state.qrVariant =
+                code.variant;
+
+            if (code.value) {
+                setStatus(
+                    "QR/DataMatrix erkannt. Vollständige OCR läuft …",
+                    "working"
+                );
+            } else {
+                setStatus(
+                    "Kein QR/DataMatrix erkannt. OCR läuft trotzdem vollständig weiter …",
+                    "warning"
+                );
+            }
+
+            state.ocrPasses =
+                await readCompleteOcr(
+                    prepared
                 );
 
-            applyVerificationResult(
-                verification
+            state.ocrLines =
+                mergeOcrLines(
+                    state.ocrPasses
+                );
+
+            renderResults();
+
+            setStatus(
+                state.qrText
+                    ? "Auswertung abgeschlossen: OCR-Inhalte wurden gelesen und mit QR/DataMatrix verglichen."
+                    : "OCR abgeschlossen. Kein QR/DataMatrix erkannt; alle OCR-Inhalte bleiben erhalten.",
+                state.qrText
+                    ? "success"
+                    : "warning"
             );
         } catch (error) {
             console.error(error);
 
             setStatus(
                 error?.message ||
-                    "Verifikations-OCR fehlgeschlagen.",
+                    "Fotoauswertung fehlgeschlagen.",
                 "error"
             );
         } finally {
@@ -1328,102 +1028,67 @@
         }
     }
 
-    function takeTextPhoto() {
-        if (!state.qrText) {
-            const existing =
-                readQrFromExistingField();
-
-            if (existing) {
-                setQrValue(existing);
-            }
-        }
-
-        if (!state.qrText) {
-            setStatus(
-                "Bitte zuerst QR / DataMatrix erfassen.",
-                "warning"
-            );
-
+    function takePhoto() {
+        if (state.busy) {
             return;
         }
 
-        if (
-            !state.qrReference
-                .partNumber ||
-            !state.qrReference
-                .serialNumber
-        ) {
-            setStatus(
-                "QR wurde gelesen, aber PN oder SN konnten daraus nicht eindeutig bestimmt werden.",
-                "warning"
-            );
-        }
-
         const input =
-            createNativePhotoInput();
-
-        setStatus(
-            "Jetzt nur den gedruckten Textbereich fotografieren.",
-            "working"
-        );
+            createPhotoInput();
 
         input.click();
     }
 
-    function resetVerificationUi() {
-        const panel =
-            byId(
-                "verificationResultPanel"
-            );
-
-        if (panel) {
-            panel.hidden = true;
-        }
-
-        const raw =
-            byId(
-                "verificationRawText"
-            );
-
-        if (raw) {
-            raw.textContent = "";
-        }
-    }
-
-    function resetWorkflow() {
+    function reset() {
         state.qrText = "";
+        state.qrVariant = "";
+        state.ocrPasses = [];
+        state.ocrLines = [];
 
-        state.qrReference = {
-            date: "",
-            partNumber: "",
-            serialNumber: ""
-        };
-
-        if (
-            state.photoObjectUrl
-        ) {
+        if (state.photoUrl) {
             URL.revokeObjectURL(
-                state.photoObjectUrl
+                state.photoUrl
             );
 
-            state.photoObjectUrl =
-                "";
+            state.photoUrl = "";
         }
 
-        updateQrReferenceUi();
-        updateVerificationReferenceUi();
-        resetVerificationUi();
+        const preview =
+            byId(
+                "onePhotoPreview"
+            );
+
+        const results =
+            byId(
+                "onePhotoResults"
+            );
+
+        if (preview) {
+            preview.hidden = true;
+        }
+
+        if (results) {
+            results.hidden = true;
+        }
 
         setStatus(
-            "Bereit für neuen Scan.",
-            ""
+            "Bereit für neues Label-Foto."
         );
     }
 
-    function buildWorkflowUi() {
-        if (
+    function installUi() {
+        const old =
             byId(
                 "twoStageLabelWorkflow"
+            );
+
+        if (old) {
+            old.remove();
+        }
+
+        if (
+            byId(
+                "onePhotoLabelWorkflow"
             )
         ) {
             return;
@@ -1442,174 +1107,114 @@
             );
 
         container.id =
-            "twoStageLabelWorkflow";
+            "onePhotoLabelWorkflow";
 
         container.className =
-            "two-stage-label-workflow";
+            "one-photo-workflow";
 
         container.innerHTML = `
-            <div class="two-stage-header">
-                <strong>QR + Drucktext-Verifikation</strong>
-                <p>
-                    QR / DataMatrix liefert die Daten.
-                    OCR verändert keine Teileinformationen und dient ausschließlich zur Prüfung des gedruckten Textes.
-                </p>
+            <div class="one-photo-header">
+                <div>
+                    <strong>Intelligente Label-Erfassung</strong>
+
+                    <p>
+                        Ein Foto reicht: Das Bild wird automatisch aufbereitet,
+                        vollständig per OCR gelesen und QR/DataMatrix dient zur Verifikation.
+                    </p>
+                </div>
+
+                <button
+                    id="onePhotoCaptureButton"
+                    type="button"
+                    class="button primary"
+                >
+                    Label fotografieren
+                </button>
             </div>
 
-            <div class="two-stage-steps">
-                <div class="two-stage-step">
-                    <span class="two-stage-number">1</span>
+            <div
+                id="onePhotoPreview"
+                class="one-photo-preview"
+                hidden
+            >
+                <img
+                    id="onePhotoPreviewImage"
+                    alt="Aufgenommenes Label"
+                >
 
-                    <div>
-                        <strong>QR / DataMatrix erfassen</strong>
-
-                        <p>
-                            PN und SN werden aus dem Code übernommen.
-                        </p>
-
-                        <button
-                            type="button"
-                            id="twoStageScanQrButton"
-                            class="button"
-                        >
-                            QR / DataMatrix scannen
-                        </button>
-
-                        <div class="two-stage-reference">
-                            <div>
-                                <span>QR roh</span>
-                                <strong id="twoStageQrRaw">–</strong>
-                            </div>
-
-                            <div>
-                                <span>PN aus QR</span>
-                                <strong id="twoStageQrPartNumber">–</strong>
-                            </div>
-
-                            <div>
-                                <span>SN aus QR</span>
-                                <strong id="twoStageQrSerialNumber">–</strong>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="two-stage-step">
-                    <span class="two-stage-number">2</span>
-
-                    <div>
-                        <strong>Drucktext fotografieren</strong>
-
-                        <p>
-                            Möglichst nur den gedruckten Text groß und scharf aufnehmen.
-                            QR-Code muss nicht mehr im Bild sein.
-                        </p>
-
-                        <button
-                            type="button"
-                            id="twoStageTextPhotoButton"
-                            class="button primary"
-                        >
-                            Textfoto aufnehmen
-                        </button>
-                    </div>
-                </div>
+                <p
+                    id="onePhotoPreviewInfo"
+                    class="hint"
+                ></p>
             </div>
 
             <p
-                id="twoStageWorkflowStatus"
-                class="two-stage-status"
+                id="onePhotoStatus"
+                class="one-photo-status"
                 aria-live="polite"
             >
-                Bereit für QR / DataMatrix.
+                Bereit für neues Label-Foto.
             </p>
 
             <section
-                id="verificationResultPanel"
-                class="verification-result-panel"
+                id="onePhotoResults"
+                class="one-photo-results"
                 hidden
             >
-                <div class="verification-result-header">
-                    <div>
-                        <strong>OCR-Verifikation</strong>
-                        <p>
-                            OCR-Werte werden nicht in die Trackingdaten übernommen.
-                        </p>
-                    </div>
+                <div class="one-photo-summary">
+                    <strong>Auswertung</strong>
 
-                    <span
-                        id="verificationOverallStatus"
-                        class="verification-badge"
-                    >
-                        –
-                    </span>
+                    <span id="onePhotoSummary"></span>
                 </div>
 
-                <div class="verification-table">
-                    <div class="verification-row verification-heading">
-                        <div>Feld</div>
-                        <div>QR-Referenz</div>
-                        <div>OCR-Kandidat</div>
-                        <div>Status</div>
-                    </div>
+                <div class="one-photo-section">
+                    <h3>Vollständiger OCR-Inhalt</h3>
 
-                    <div class="verification-row">
-                        <div>PN</div>
-                        <div id="verificationPnReference">–</div>
-                        <div id="verificationPnDetected">–</div>
-                        <div>
-                            <span
-                                id="verificationPnStatus"
-                                class="verification-badge"
-                            >
-                                –
-                            </span>
+                    <p class="hint">
+                        Inhalte bleiben erhalten, auch wenn sie nicht im QR/DataMatrix-Code vorkommen.
+                    </p>
 
-                            <small id="verificationPnReason"></small>
-                        </div>
-                    </div>
-
-                    <div class="verification-row">
-                        <div>SN</div>
-                        <div id="verificationSnReference">–</div>
-                        <div id="verificationSnDetected">–</div>
-                        <div>
-                            <span
-                                id="verificationSnStatus"
-                                class="verification-badge"
-                            >
-                                –
-                            </span>
-
-                            <small id="verificationSnReason"></small>
-                        </div>
-                    </div>
+                    <div id="onePhotoOcrLines"></div>
                 </div>
 
-                <p class="hint">
-                    Verwendete Bildvariante:
-                    <strong id="verificationVariant">–</strong>
-                </p>
+                <div class="one-photo-section">
+                    <h3>QR / DataMatrix-Verifikation</h3>
 
-                <details>
-                    <summary>OCR-Rohtexte anzeigen</summary>
-                    <pre id="verificationRawText"></pre>
+                    <p>
+                        <strong>Code:</strong>
+                        <code id="onePhotoQrRaw">–</code>
+                    </p>
+
+                    <p class="hint">
+                        Bildvariante:
+                        <span id="onePhotoQrVariant">–</span>
+                    </p>
+
+                    <div id="onePhotoQrTokens"></div>
+                </div>
+
+                <details class="one-photo-section">
+                    <summary>
+                        OCR-Rohdaten aller Durchläufe
+                    </summary>
+
+                    <pre id="onePhotoRawOcr"></pre>
                 </details>
-            </section>
 
-            <div class="two-stage-actions">
                 <button
+                    id="onePhotoResetButton"
                     type="button"
-                    id="twoStageResetButton"
                     class="button secondary"
                 >
-                    Scan zurücksetzen
+                    Neues Label erfassen
                 </button>
-            </div>
+            </section>
         `;
 
         const qrField =
-            qrInput.closest(".field");
+            qrInput.closest(
+                ".field"
+            );
 
         if (
             qrField &&
@@ -1620,45 +1225,30 @@
                 qrField.nextSibling
             );
         } else {
-            qrInput.parentNode.insertBefore(
-                container,
-                qrInput.nextSibling
+            qrInput.parentNode.appendChild(
+                container
             );
         }
 
         byId(
-            "twoStageScanQrButton"
+            "onePhotoCaptureButton"
         ).addEventListener(
             "click",
-            scanQrOnly
+            takePhoto
         );
 
         byId(
-            "twoStageTextPhotoButton"
+            "onePhotoResetButton"
         ).addEventListener(
             "click",
-            takeTextPhoto
+            reset
         );
-
-        byId(
-            "twoStageResetButton"
-        ).addEventListener(
-            "click",
-            resetWorkflow
-        );
-
-        const existing =
-            readQrFromExistingField();
-
-        if (existing) {
-            setQrValue(existing);
-        }
     }
 
     function installStyles() {
         if (
             byId(
-                "twoStageVerificationStyles"
+                "onePhotoWorkflowStyles"
             )
         ) {
             return;
@@ -1670,10 +1260,10 @@
             );
 
         style.id =
-            "twoStageVerificationStyles";
+            "onePhotoWorkflowStyles";
 
         style.textContent = `
-            .two-stage-label-workflow {
+            .one-photo-workflow {
                 margin-top: 1rem;
                 padding: 1rem;
                 border: 1px solid rgba(127,127,127,.25);
@@ -1681,179 +1271,162 @@
                 background: rgba(127,127,127,.05);
             }
 
-            .two-stage-header p,
-            .two-stage-step p {
-                margin: .35rem 0 .75rem;
+            .one-photo-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 1rem;
             }
 
-            .two-stage-steps {
-                display: grid;
-                gap: .9rem;
+            .one-photo-header p {
+                margin: .35rem 0 0;
+            }
+
+            .one-photo-preview {
                 margin-top: 1rem;
             }
 
-            .two-stage-step {
-                display: grid;
-                grid-template-columns: 2.2rem 1fr;
-                gap: .8rem;
-                padding: .85rem;
-                border-radius: .7rem;
-                background: rgba(127,127,127,.06);
-            }
-
-            .two-stage-number {
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                width: 2rem;
-                height: 2rem;
-                border-radius: 50%;
-                font-weight: 700;
-                background: rgba(0,110,220,.12);
-            }
-
-            .two-stage-reference {
-                display: grid;
-                grid-template-columns: repeat(3,minmax(0,1fr));
-                gap: .5rem;
-                margin-top: .8rem;
-            }
-
-            .two-stage-reference > div {
-                padding: .65rem;
-                border-radius: .5rem;
-                background: rgba(127,127,127,.08);
-                overflow-wrap: anywhere;
-            }
-
-            .two-stage-reference span {
+            .one-photo-preview img {
                 display: block;
-                font-size: .78rem;
-                opacity: .7;
-                margin-bottom: .2rem;
+                width: 100%;
+                max-height: 24rem;
+                object-fit: contain;
+                border-radius: .6rem;
+                background: #111;
             }
 
-            .two-stage-status {
-                margin: .9rem 0 0;
+            .one-photo-status {
+                margin: 1rem 0 0;
                 padding: .7rem;
                 border-radius: .5rem;
                 background: rgba(127,127,127,.08);
             }
 
-            .two-stage-status-success {
-                background: rgba(0,150,80,.13);
+            .one-photo-status-working {
+                background: rgba(0,110,220,.12);
             }
 
-            .two-stage-status-warning {
-                background: rgba(220,150,0,.15);
+            .one-photo-status-success {
+                background: rgba(0,150,80,.14);
             }
 
-            .two-stage-status-error {
-                background: rgba(220,0,0,.13);
+            .one-photo-status-warning {
+                background: rgba(220,150,0,.16);
             }
 
-            .two-stage-status-working {
-                background: rgba(0,110,220,.11);
+            .one-photo-status-error {
+                background: rgba(220,0,0,.14);
             }
 
-            .two-stage-actions {
-                margin-top: .8rem;
-            }
-
-            .verification-result-panel {
+            .one-photo-results {
                 margin-top: 1rem;
-                padding: .9rem;
-                border-radius: .7rem;
-                border: 1px solid rgba(127,127,127,.25);
             }
 
-            .verification-result-header {
+            .one-photo-summary {
                 display: flex;
                 justify-content: space-between;
                 gap: 1rem;
-                align-items: flex-start;
-                margin-bottom: .8rem;
+                padding: .8rem;
+                border-radius: .6rem;
+                background: rgba(127,127,127,.08);
             }
 
-            .verification-result-header p {
-                margin: .25rem 0 0;
+            .one-photo-section {
+                margin-top: 1rem;
+                padding: .8rem;
+                border: 1px solid rgba(127,127,127,.2);
+                border-radius: .6rem;
             }
 
-            .verification-table {
-                display: grid;
-                gap: .4rem;
-            }
-
-            .verification-row {
+            .one-photo-line,
+            .one-photo-token-row {
                 display: grid;
                 grid-template-columns:
-                    .45fr
-                    1fr
-                    1fr
-                    1.2fr;
-                gap: .5rem;
-                align-items: start;
-                padding: .55rem;
-                border-radius: .45rem;
+                    minmax(0,1fr)
+                    minmax(9rem,.45fr);
+                gap: .7rem;
+                align-items: center;
+                padding: .6rem;
+                margin-top: .4rem;
+                border-radius: .5rem;
                 background: rgba(127,127,127,.06);
             }
 
-            .verification-heading {
-                font-weight: 700;
+            .one-photo-line-text {
+                font-family: ui-monospace,
+                    SFMono-Regular,
+                    Menlo,
+                    Consolas,
+                    monospace;
+                font-weight: 600;
+                overflow-wrap: anywhere;
             }
 
-            .verification-row small {
-                display: block;
-                margin-top: .3rem;
-            }
-
-            .verification-badge {
+            .one-photo-badge {
                 display: inline-block;
-                min-width: 4.5rem;
                 padding: .25rem .5rem;
                 border-radius: 999px;
-                text-align: center;
+                font-size: .8rem;
                 font-weight: 700;
-                background: rgba(127,127,127,.12);
+                white-space: nowrap;
             }
 
-            .verification-green {
+            .one-photo-badge.confirmed {
                 background: rgba(0,150,80,.18);
-                outline: 1px solid rgba(0,150,80,.45);
+                outline: 1px solid rgba(0,150,80,.5);
             }
 
-            .verification-yellow {
-                background: rgba(230,160,0,.20);
-                outline: 1px solid rgba(200,135,0,.50);
+            .one-photo-badge.similar {
+                background: rgba(225,155,0,.2);
+                outline: 1px solid rgba(200,135,0,.5);
             }
 
-            .verification-red {
-                background: rgba(220,0,0,.17);
-                outline: 1px solid rgba(220,0,0,.45);
+            .one-photo-badge.ocr-only {
+                background: rgba(0,110,220,.12);
+                outline: 1px solid rgba(0,110,220,.28);
             }
 
-            #verificationRawText {
-                max-height: 18rem;
+            .one-photo-badge.missing {
+                background: rgba(220,0,0,.14);
+                outline: 1px solid rgba(220,0,0,.35);
+            }
+
+            .one-photo-line small,
+            .one-photo-token-row small {
+                display: block;
+                margin-top: .3rem;
+                opacity: .75;
+                overflow-wrap: anywhere;
+            }
+
+            #onePhotoQrRaw {
+                overflow-wrap: anywhere;
+            }
+
+            #onePhotoRawOcr {
+                max-height: 24rem;
                 overflow: auto;
                 white-space: pre-wrap;
                 overflow-wrap: anywhere;
             }
 
             @media (max-width: 720px) {
-                .two-stage-reference {
+                .one-photo-header {
+                    display: grid;
                     grid-template-columns: 1fr;
                 }
 
-                .two-stage-step .button {
+                .one-photo-header .button {
                     width: 100%;
                 }
 
-                .verification-row {
-                    grid-template-columns: 1fr;
+                .one-photo-summary {
+                    display: grid;
                 }
 
-                .verification-heading {
-                    display: none;
+                .one-photo-line,
+                .one-photo-token-row {
+                    grid-template-columns: 1fr;
                 }
             }
         `;
@@ -1865,7 +1438,7 @@
 
     function install() {
         installStyles();
-        buildWorkflowUi();
+        installUi();
     }
 
     if (
@@ -1880,13 +1453,11 @@
         install();
     }
 
-    global.TeiletrackingTwoStageLabelWorkflow =
+    global.TeiletrackingOnePhotoLabelWorkflow =
         Object.freeze({
-            reset:
-                resetWorkflow,
-            setQrValue,
-            parseQrReference,
-            verifyReference
+            reset,
+            parseQrTokens,
+            compareLineWithQr
         });
 })(
     typeof window !== "undefined"

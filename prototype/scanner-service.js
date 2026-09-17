@@ -1182,7 +1182,8 @@
 
     async function detectQr(
         canvas,
-        context
+        context,
+        options = {}
     ) {
         if (!lastDiagnostics) {
             lastDiagnostics = {
@@ -1206,7 +1207,10 @@
             };
         }
 
-        if (lastLiveQrText) {
+        if (
+            !options.ignoreLiveCache &&
+            lastLiveQrText
+        ) {
             lastDiagnostics.qrAttempts
                 .push(
                     "Live-Scan Treffer"
