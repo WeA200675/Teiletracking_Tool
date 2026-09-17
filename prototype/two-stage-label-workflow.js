@@ -183,6 +183,123 @@
         );
     }
 
+    const OCR_CONFUSION_GROUPS = [
+        new Set(["B", "8"]),
+        new Set(["O", "0", "Q"]),
+        new Set(["I", "L", "1"]),
+        new Set(["S", "5"]),
+        new Set(["Z", "2"]),
+        new Set(["G", "6"])
+    ];
+
+    function isKnownOcrConfusion(left, right) {
+        const a = normalize(left);
+        const b = normalize(right);
+
+        if (
+            !a ||
+            !b ||
+            a === b
+        ) {
+            return false;
+        }
+
+        return OCR_CONFUSION_GROUPS.some(
+            (group) =>
+                group.has(a) &&
+                group.has(b)
+        );
+    }
+
+    function analyzeQrCorrection(
+        ocrValue,
+        qrValue
+    ) {
+        const ocr =
+            compact(ocrValue);
+
+        const qr =
+            compact(qrValue);
+
+        if (
+            !ocr ||
+            !qr
+        ) {
+            return null;
+        }
+
+        if (ocr === qr) {
+            return {
+                exact: true,
+                correctable: true,
+                correctedValue:
+                    qrValue,
+                corrections: [],
+                unknownDifferences: 0
+            };
+        }
+
+        if (
+            ocr.length !==
+            qr.length
+        ) {
+            return null;
+        }
+
+        const corrections = [];
+        let unknownDifferences = 0;
+
+        for (
+            let index = 0;
+            index < qr.length;
+            index += 1
+        ) {
+            const ocrChar =
+                ocr[index];
+
+            const qrChar =
+                qr[index];
+
+            if (
+                ocrChar ===
+                qrChar
+            ) {
+                continue;
+            }
+
+            if (
+                isKnownOcrConfusion(
+                    ocrChar,
+                    qrChar
+                )
+            ) {
+                corrections.push({
+                    position:
+                        index + 1,
+                    from:
+                        ocrChar,
+                    to:
+                        qrChar
+                });
+
+                continue;
+            }
+
+            unknownDifferences += 1;
+        }
+
+        return {
+            exact: false,
+            correctable:
+                corrections.length > 0 &&
+                unknownDifferences === 0,
+            correctedValue:
+                qrValue,
+            corrections,
+            unknownDifferences
+        };
+    }
+
     function compareLineWithQr(
         line,
         qrTokens
@@ -212,9 +329,13 @@
                     qrCompact
                 ) {
                     return {
-                        level: "CONFIRMED",
+                        level:
+                            "CONFIRMED",
                         qrToken,
                         candidate,
+                        correctedValue:
+                            qrToken,
+                        corrections: [],
                         reason:
                             "Durch QR/DataMatrix exakt bestätigt."
                     };
@@ -228,11 +349,39 @@
                     )
                 ) {
                     return {
-                        level: "CONFIRMED",
+                        level:
+                            "CONFIRMED",
                         qrToken,
                         candidate,
+                        correctedValue:
+                            qrToken,
+                        corrections: [],
                         reason:
                             "QR-Wert vollständig in der OCR-Zeile enthalten."
+                    };
+                }
+
+                const correction =
+                    analyzeQrCorrection(
+                        candidate,
+                        qrToken
+                    );
+
+                if (
+                    correction &&
+                    correction.correctable
+                ) {
+                    return {
+                        level:
+                            "QR_CORRECTED",
+                        qrToken,
+                        candidate,
+                        correctedValue:
+                            qrToken,
+                        corrections:
+                            correction.corrections,
+                        reason:
+                            "OCR-Zeichen wurden positionsgenau durch den QR/DataMatrix-Wert korrigiert."
                     };
                 }
             }
@@ -242,14 +391,11 @@
             const qrCompact =
                 compact(qrToken);
 
-            if (qrCompact.length < 5) {
+            if (
+                qrCompact.length < 5
+            ) {
                 continue;
             }
-
-            const qrConfusion =
-                confusionNormalized(
-                    qrToken
-                );
 
             for (const candidate of candidates) {
                 const candidateCompact =
@@ -259,23 +405,9 @@
                     Math.abs(
                         candidateCompact.length -
                         qrCompact.length
-                    ) > 2
+                    ) > 1
                 ) {
                     continue;
-                }
-
-                if (
-                    confusionNormalized(
-                        candidate
-                    ) === qrConfusion
-                ) {
-                    return {
-                        level: "SIMILAR",
-                        qrToken,
-                        candidate,
-                        reason:
-                            "Passt nach typischer OCR-Zeichenverwechslung zum QR-Wert."
-                    };
                 }
 
                 const distance =
@@ -293,12 +425,15 @@
                     )
                 ) {
                     fuzzy = {
-                        level: "SIMILAR",
+                        level:
+                            "SIMILAR",
                         qrToken,
                         candidate,
+                        correctedValue: "",
+                        corrections: [],
                         distance,
                         reason:
-                            "Sehr ähnlich zum QR-Wert."
+                            "Sehr ähnlich zum QR-Wert, aber nicht automatisch korrigiert."
                     };
                 }
             }
@@ -309,9 +444,12 @@
         }
 
         return {
-            level: "OCR_ONLY",
+            level:
+                "OCR_ONLY",
             qrToken: "",
             candidate: "",
+            correctedValue: "",
+            corrections: [],
             reason:
                 "OCR-Inhalt ist nicht im QR/DataMatrix-Code enthalten."
         };
@@ -651,7 +789,28 @@
                             level:
                                 "CONFIRMED",
                             ocrLine:
-                                line.text
+                                line.text,
+                            correctedValue:
+                                qrToken,
+                            corrections: []
+                        };
+                    }
+
+                    if (
+                        comparison.level ===
+                        "QR_CORRECTED"
+                    ) {
+                        return {
+                            token:
+                                qrToken,
+                            level:
+                                "QR_CORRECTED",
+                            ocrLine:
+                                line.text,
+                            correctedValue:
+                                qrToken,
+                            corrections:
+                                comparison.corrections || []
                         };
                     }
 
@@ -666,7 +825,9 @@
                             level:
                                 "SIMILAR",
                             ocrLine:
-                                line.text
+                                line.text,
+                            correctedValue: "",
+                            corrections: []
                         };
                     }
                 }
@@ -677,7 +838,9 @@
                             qrToken,
                         level:
                             "NOT_FOUND",
-                        ocrLine: ""
+                        ocrLine: "",
+                        correctedValue: "",
+                        corrections: []
                     }
                 );
             }
@@ -688,6 +851,9 @@
         switch (level) {
             case "CONFIRMED":
                 return "✓ QR bestätigt";
+
+            case "QR_CORRECTED":
+                return "✓ durch QR korrigiert";
 
             case "SIMILAR":
                 return "? ähnlich";
@@ -707,6 +873,9 @@
         switch (level) {
             case "CONFIRMED":
                 return "confirmed";
+
+            case "QR_CORRECTED":
+                return "corrected";
 
             case "SIMILAR":
                 return "similar";
@@ -799,6 +968,26 @@
                                           `
                                         : ""
                                 }
+
+                                ${
+                                    line.level === "QR_CORRECTED"
+                                        ? `
+                                            <small>
+                                                Korrigiert: <strong>${escapeHtml(line.correctedValue)}</strong>
+                                            </small>
+                                            <small>
+                                                ${escapeHtml(
+                                                    (line.corrections || [])
+                                                        .map(
+                                                            (item) =>
+                                                                `${item.from}→${item.to} an Position ${item.position}`
+                                                        )
+                                                        .join(", ")
+                                                )}
+                                            </small>
+                                          `
+                                        : ""
+                                }
                             </div>
                         </div>
                     `)
@@ -828,7 +1017,17 @@
                                     item.ocrLine
                                         ? `
                                             <small>
-                                                OCR: ${escapeHtml(item.ocrLine)}
+                                                OCR roh: ${escapeHtml(item.ocrLine)}
+                                            </small>
+                                          `
+                                        : ""
+                                }
+
+                                ${
+                                    item.level === "QR_CORRECTED"
+                                        ? `
+                                            <small>
+                                                QR-Korrektur: <strong>${escapeHtml(item.correctedValue)}</strong>
                                             </small>
                                           `
                                         : ""
@@ -858,6 +1057,13 @@
                     "CONFIRMED"
             ).length;
 
+        const corrected =
+            evaluated.filter(
+                (line) =>
+                    line.level ===
+                    "QR_CORRECTED"
+            ).length;
+
         const similar =
             evaluated.filter(
                 (line) =>
@@ -874,7 +1080,54 @@
 
         if (summary) {
             summary.textContent =
-                `${evaluated.length} OCR-Zeilen · ${confirmed} durch QR bestätigt · ${similar} ähnlich · ${ocrOnly} nur im Drucktext`;
+                `${evaluated.length} OCR-Zeilen · ${confirmed} exakt bestätigt · ${corrected} durch QR korrigiert · ${similar} ähnlich · ${ocrOnly} nur im Drucktext`;
+        }
+
+        const correctedLabelText =
+            evaluated
+                .map(
+                    (line) =>
+                        line.level === "QR_CORRECTED"
+                            ? line.correctedValue
+                            : line.text
+                )
+                .join("\n");
+
+        const labelInput =
+            byId("labelInput");
+
+        const qrInput =
+            byId("qrInput");
+
+        if (labelInput) {
+            labelInput.value =
+                correctedLabelText;
+
+            labelInput.dispatchEvent(
+                new Event(
+                    "input",
+                    {
+                        bubbles: true
+                    }
+                )
+            );
+        }
+
+        if (
+            qrInput &&
+            state.qrText
+        ) {
+            qrInput.value =
+                state.qrText;
+
+            qrInput.dispatchEvent(
+                new Event(
+                    "input",
+                    {
+                        bubbles: true
+                    }
+                )
+            );
         }
 
         const panel =
@@ -1374,6 +1627,11 @@
             .one-photo-badge.confirmed {
                 background: rgba(0,150,80,.18);
                 outline: 1px solid rgba(0,150,80,.5);
+            }
+
+            .one-photo-badge.corrected {
+                background: rgba(0,150,80,.18);
+                outline: 2px solid rgba(0,150,80,.65);
             }
 
             .one-photo-badge.similar {
