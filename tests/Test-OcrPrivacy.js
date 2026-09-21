@@ -8,6 +8,14 @@ const validation = require("../prototype/ocr-validation-service.js");
 const learning = require("../prototype/ocr-learning-service.js");
 const quality = require("../prototype/image-quality-service.js");
 
+const memoryStorage = new Map();
+global.localStorage = {
+    getItem: key => memoryStorage.has(key) ? memoryStorage.get(key) : null,
+    setItem: (key, value) => memoryStorage.set(key, String(value)),
+    removeItem: key => memoryStorage.delete(key)
+};
+const profiles = require("../prototype/label-profile-service.js");
+
 const exact = validation.compareField("ABC-123", "ABC-123", { required: true });
 assert.equal(exact.status, "EXACT");
 
@@ -61,6 +69,24 @@ const rejectedQuality = quality.evaluate({
 assert.equal(rejectedQuality.accepted, false);
 assert.ok(rejectedQuality.reasons.includes("UNSHARP"));
 assert.ok(rejectedQuality.reasons.includes("MOTION"));
+
+const safeProfile = profiles.saveProfile({
+    schemaVersion: 1,
+    synthetic: true,
+    id: "synthetic-a",
+    name: "Synthetic A",
+    regions: {
+        partNumber: { x: 0.1, y: 0.1, width: 0.8, height: 0.2 }
+    },
+    expectedValue: "REAL-PN-MUST-NOT-SURVIVE",
+    imageData: "data:image/jpeg;base64,SECRET"
+});
+const profileText = JSON.stringify(profiles.exportProfile(safeProfile));
+assert.equal(profiles.isSafeProfile(safeProfile), true);
+assert.equal(profileText.includes("REAL-PN-MUST-NOT-SURVIVE"), false);
+assert.equal(profileText.includes("data:image"), false);
+profiles.setActiveProfile(safeProfile.id);
+assert.equal(profiles.getActiveProfile().id, safeProfile.id);
 
 const appSource = fs.readFileSync(
     path.join(__dirname, "../prototype/app.js"),

@@ -1228,12 +1228,78 @@
         const activeWorker =
             await getWorker();
 
+        let profileCandidate = null;
+        const profileService =
+            global.TeiletrackingLabelProfileService;
+        const activeProfile =
+            profileService &&
+            typeof profileService.getActiveProfile === "function"
+                ? profileService.getActiveProfile()
+                : null;
+
+        if (
+            activeProfile &&
+            activeProfile.regions &&
+            Object.keys(activeProfile.regions).length > 0
+        ) {
+            const profileData = {
+                partNumber: "",
+                serialNumber: "",
+                hardware: "",
+                software: ""
+            };
+            const profileRaw = [];
+
+            for (const [fieldName, region] of Object.entries(activeProfile.regions)) {
+                passLabel = `Profil ${activeProfile.name}: ${fieldName}`;
+                const crop = profileService.cropRegion(sourceCanvas, region);
+                const result = await activeWorker.recognize(crop, { rotateAuto: false });
+                const text = result && result.data ? String(result.data.text || "") : "";
+                const candidates = text.toUpperCase().match(/[A-Z0-9][A-Z0-9._/\-]*/g) || [];
+                const reference = qrData && qrData[fieldName] ? String(qrData[fieldName]) : "";
+
+                if (reference && global.TeiletrackingOcrValidationService) {
+                    candidates.sort((left, right) =>
+                        global.TeiletrackingOcrValidationService.levenshtein(left, reference) -
+                        global.TeiletrackingOcrValidationService.levenshtein(right, reference)
+                    );
+                }
+                else {
+                    candidates.sort((left, right) => right.length - left.length);
+                }
+
+                profileData[fieldName] = cleanFieldValue(candidates[0] || "");
+                profileRaw.push(`${fieldName}: ${text.trim()}`);
+            }
+
+            const validation =
+                global.TeiletrackingOcrValidationService
+                    ? global.TeiletrackingOcrValidationService.validateRecord(profileData, qrData)
+                    : { data: profileData, reviewFields: [], accepted: true };
+
+            profileCandidate = {
+                variantName: `Labelprofil: ${activeProfile.name}`,
+                rawText: profileRaw.join("\n"),
+                confidence: validation.accepted ? 100 : 0,
+                ocrData: validation.data,
+                missingFields: validation.reviewFields,
+                complete: validation.accepted,
+                score: getCandidateScore(validation.data, validation.accepted ? 100 : 0, qrData) + 40
+            };
+
+            if (profileCandidate.complete) {
+                passLabel = "";
+                progressCallback = null;
+                return profileCandidate;
+            }
+        }
+
         const variants =
             createImageVariants(
                 sourceCanvas
             );
 
-        let bestCandidate = null;
+        let bestCandidate = profileCandidate;
 
         for (
             let index = 0;

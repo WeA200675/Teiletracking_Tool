@@ -38,6 +38,23 @@ Der Export enthält keine Fotos, Rohtexte, QR-Inhalte, echten Werte oder Hashes
 echter Werte. Vor der Aufnahme in das Repository ist der JSON-Inhalt manuell zu
 prüfen. Nur Einträge mit `synthetic: true` sind zulässig.
 
+## Mobile Labelprofil-App
+
+Die Seite `prototype/label-trainer.html` ermöglicht auf dem Smartphone:
+
+- ein Label zu fotografieren, ohne das Bild dauerhaft zu speichern,
+- relative Bereiche für PN, SN, HW und SW per Touch zu markieren,
+- Sollwerte ausschließlich für den aktuellen lokalen OCR-Test einzugeben,
+- OCR-Abweichungen als abstrakte Fehlermuster auszuwerten,
+- mehrere Profile lokal zu speichern und für die Tracking-App zu aktivieren,
+- Profile als geprüfte JSON-Dateien zu exportieren oder zu importieren.
+
+Gespeicherte Profile enthalten nur relative Koordinaten, Vorverarbeitungsoptionen
+und sichere synthetische Erkenntnisse. Sollwerte und Originalbilder werden beim
+Profilaufbau ausdrücklich verworfen. Die Haupt-App versucht ein aktives Profil
+vor der allgemeinen Vollbild-OCR und fällt bei unsicheren Ergebnissen auf den
+bestehenden OCR-Prozess zurück.
+
 ## Repository-Prozess
 
 1. Anonymisierten Export lokal öffnen und auf Rohwerte prüfen.
