@@ -577,11 +577,23 @@
                 )
         };
 
-        return recoverExactQrValuesFromOcr(
+        const recovered = recoverExactQrValuesFromOcr(
             extracted,
             rawText,
             qrData
         );
+
+        if (
+            global.TeiletrackingOcrValidationService &&
+            typeof global.TeiletrackingOcrValidationService.validateRecord ===
+                "function"
+        ) {
+            return global.TeiletrackingOcrValidationService
+                .validateRecord(recovered, qrData)
+                .data;
+        }
+
+        return recovered;
     }
 
     function buildTrackingString(data) {
@@ -618,6 +630,26 @@
         ocrData,
         qrData
     ) {
+        if (
+            global.TeiletrackingOcrValidationService &&
+            typeof global.TeiletrackingOcrValidationService.validateRecord ===
+                "function"
+        ) {
+            const validation =
+                global.TeiletrackingOcrValidationService
+                    .validateRecord(ocrData, qrData);
+
+            const labels = {
+                partNumber: "PN",
+                serialNumber: "SN",
+                hardware: "HW",
+                software: "SW"
+            };
+
+            return validation.reviewFields
+                .map(fieldName => labels[fieldName] || fieldName);
+        }
+
         const missing = [];
 
         if (!ocrData.partNumber) {
@@ -1053,7 +1085,8 @@
 
     function getCandidateScore(
         ocrData,
-        confidence
+        confidence,
+        qrData = null
     ) {
         let score = 0;
 
@@ -1089,6 +1122,23 @@
         score +=
             normalizedConfidence /
             10;
+
+        if (
+            qrData &&
+            global.TeiletrackingOcrValidationService
+        ) {
+            const validation =
+                global.TeiletrackingOcrValidationService
+                    .validateRecord(ocrData, qrData);
+
+            for (const comparison of Object.values(validation.fields)) {
+                if (comparison.status === "EXACT") score += 80;
+                if (comparison.status === "CONFUSION_CORRECTED") score += 60;
+                if (comparison.status === "FUZZY_REVIEW") score += 10;
+                if (comparison.status === "MISMATCH") score -= 80;
+                if (comparison.status === "MISSING") score -= 100;
+            }
+        }
 
         return score;
     }
@@ -1257,7 +1307,8 @@
                 score:
                     getCandidateScore(
                         ocrData,
-                        confidence
+                        confidence,
+                        qrData
                     )
             };
 

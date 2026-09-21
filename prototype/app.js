@@ -11,6 +11,7 @@ const state = {
     capturedLabelImageDataUrl: null,
     capturedLabelCapturedAt: null,
     labelOcrBusy: false,
+    lastOcrOriginal: null,
     labelScanAttempts: 0,
     maxLabelScanAttempts: 5
 };
@@ -122,6 +123,8 @@ const elements = {
     labelOcrSerialNumberCompare: document.getElementById("labelOcrSerialNumberCompare"),
     labelOcrHardwareCompare: document.getElementById("labelOcrHardwareCompare"),
     labelOcrSoftwareCompare: document.getElementById("labelOcrSoftwareCompare"),
+    exportOcrInsightButton: document.getElementById("exportOcrInsightButton"),
+    ocrLearningStatus: document.getElementById("ocrLearningStatus"),
     applyOcrValuesButton: document.getElementById("applyOcrValuesButton"),
     scanRetryHint: document.getElementById("scanRetryHint"),
     scanRetryTitle: document.getElementById("scanRetryTitle"),
@@ -1814,6 +1817,7 @@ function clearOcrFieldComparison() {
 }
 
 function clearLabelOcrResult() {
+    state.lastOcrOriginal = null;
     elements.labelOcrPanel.classList.add("hidden");
 
     setLabelOcrProgress("–");
@@ -2073,6 +2077,12 @@ function renderLabelOcrResult(
     ocrData,
     rawText
 ) {
+    state.lastOcrOriginal = {
+        partNumber: normalizeText(ocrData.partNumber),
+        serialNumber: normalizeText(ocrData.serialNumber),
+        hardware: normalizeText(ocrData.hardware),
+        software: normalizeText(ocrData.software)
+    };
     elements.labelOcrPanel.classList.remove(
         "hidden"
     );
@@ -2101,6 +2111,75 @@ function renderLabelOcrResult(
         String(rawText || "").trim();
 
     updateLabelOcrComparisonPreview();
+}
+
+function getOcrQualityBuckets() {
+    const diagnostics =
+        TeiletrackingScannerService.getLastDiagnostics() || {};
+    const quality = diagnostics.quality || {};
+    const sharpness = Number(quality.edgeScore || 0);
+    const brightness = Number(quality.brightness || 0);
+    const motion = Number(quality.motion || 0);
+
+    return {
+        sharpnessBucket: sharpness >= 18 ? "high" : sharpness >= 11 ? "medium" : "low",
+        brightnessBucket: brightness < 58 ? "dark" : brightness > 220 ? "bright" : "balanced",
+        motionBucket: motion > 24 ? "high" : motion > 10 ? "medium" : "low"
+    };
+}
+
+function exportAnonymizedOcrInsights() {
+    if (!state.lastOcrOriginal) {
+        elements.ocrLearningStatus.textContent =
+            "Noch keine OCR-Erkennung vorhanden.";
+        return;
+    }
+
+    const corrected = getEditableOcrData();
+    const quality = getOcrQualityBuckets();
+    const fields = [
+        ["PartNumber", "partNumber"],
+        ["SerialNumber", "serialNumber"],
+        ["Hardware", "hardware"],
+        ["Software", "software"]
+    ];
+    const insights = [];
+
+    for (const [label, key] of fields) {
+        const observed = state.lastOcrOriginal[key];
+        const expected = corrected[key];
+        if (!observed || !expected || observed === expected) continue;
+        insights.push(
+            TeiletrackingOcrLearningService.createInsight({
+                field: label,
+                observed,
+                expected,
+                quality,
+                profile: getOcrProfileName()
+            })
+        );
+    }
+
+    if (insights.length === 0) {
+        elements.ocrLearningStatus.textContent =
+            "Keine manuell korrigierte Abweichung gefunden; es wurde nichts exportiert.";
+        return;
+    }
+
+    const safeExport =
+        TeiletrackingOcrLearningService.createExport(insights);
+    const blob = new Blob(
+        [JSON.stringify(safeExport, null, 2)],
+        { type: "application/json" }
+    );
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `ocr-insights-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    elements.ocrLearningStatus.textContent =
+        `${insights.length} anonymisierte Erkenntnis(se) exportiert. Keine Rohwerte oder Bilder enthalten.`;
 }
 
 function applyOcrValuesAndCompare() {
@@ -4148,22 +4227,6 @@ async function saveCurrentRecord() {
 
     await saveTrackingData();
 
-    if (state.capturedLabelImageDataUrl) {
-        try {
-            await TeiletrackingDataService
-                .saveLabelImage(
-                    sourceRecordId,
-                    state.capturedLabelImageDataUrl
-                );
-        }
-        catch (error) {
-            console.warn(
-                "Datensatz wurde gespeichert, das Labelbild konnte jedoch nicht dauerhaft gespeichert werden:",
-                error
-            );
-        }
-    }
-
     refreshTrackingFilterOptions();
     renderSavedItems();
     updateDataStatus();
@@ -4505,6 +4568,11 @@ document.addEventListener(
 elements.applyOcrValuesButton.addEventListener(
     "click",
     applyOcrValuesAndCompare
+);
+
+elements.exportOcrInsightButton.addEventListener(
+    "click",
+    exportAnonymizedOcrInsights
 );
 
 for (
