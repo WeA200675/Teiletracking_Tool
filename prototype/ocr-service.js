@@ -34,7 +34,9 @@
                     "SERIALNUMBER",
                     "SERIENNUMMER",
                     "SERIEN NR",
-                    "SERIEN NR."
+                    "SERIEN NR.",
+                    "CPID",
+                    "CP ID"
                 ],
                 Required: true
             },
@@ -56,7 +58,10 @@
                     "S/W",
                     "SOFTWARE",
                     "SOFTWARE VERSION",
-                    "SW VERSION"
+                    "SW VERSION",
+                    "I-STUFE",
+                    "I STUFE",
+                    "ISTUFE"
                 ],
                 Required: false
             }
