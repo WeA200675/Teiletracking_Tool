@@ -1579,7 +1579,7 @@
 
         if (status) {
             status.textContent =
-                "Kamera fokussiert … Aufnahme in 2 Sekunden.";
+                "Autofokus wird ausgelöst …";
 
             status.classList.remove(
                 "error"
@@ -1588,37 +1588,23 @@
 
         try {
             try {
-                const capabilities =
-                    typeof activeTrack.getCapabilities ===
-                    "function"
-                        ? activeTrack.getCapabilities()
-                        : {};
+                if (
+                    "ImageCapture" in global
+                ) {
+                    const focusTrigger =
+                        new global.ImageCapture(
+                            activeTrack
+                        );
 
-                const focusModes =
-                    Array.isArray(
-                        capabilities.focusMode
-                    )
-                        ? capabilities.focusMode
-                        : [];
-
-                const focusMode =
-                    focusModes.includes(
-                        "single-shot"
-                    )
-                        ? "single-shot"
-                        : focusModes.includes(
-                            "continuous"
-                        )
-                            ? "continuous"
-                            : "";
-
-                if (focusMode) {
-                    await activeTrack
-                        .applyConstraints({
-                            advanced: [
-                                { focusMode }
-                            ]
-                        });
+                    if (
+                        typeof focusTrigger.takePhoto ===
+                        "function"
+                    ) {
+                        // Einige Smartphones fokussieren erst beim Aufruf von
+                        // takePhoto(). Diese erste, zu frühe Aufnahme wird
+                        // absichtlich verworfen und nur als Fokusimpuls genutzt.
+                        await focusTrigger.takePhoto();
+                    }
                 }
             }
             catch (error) {
@@ -1626,6 +1612,11 @@
                     "Autofokus konnte nicht erneut angestoßen werden.",
                     error
                 );
+            }
+
+            if (status) {
+                status.textContent =
+                    "Autofokus ausgelöst. Aufnahme in 2 Sekunden.";
             }
 
             await delay(1000);
@@ -1648,13 +1639,21 @@
 
             if (status) {
                 status.textContent =
-                    "Hochauflösendes Label-Foto wird aufgenommen …";
+                    "Scharfes Kamerabild wird übernommen …";
             }
 
             const capture =
-                await captureBestStill(
+                captureFrame(
                     video
                 );
+
+            capture.captureSource =
+                "Videoframe nach Autofokus";
+
+            if (lastDiagnostics) {
+                lastDiagnostics.captureSource =
+                    capture.captureSource;
+            }
 
             pendingHighResolutionCapture = {
                 ...capture,
