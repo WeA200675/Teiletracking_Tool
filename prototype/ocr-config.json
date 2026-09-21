@@ -42,6 +42,8 @@
         "SERIALNO",
         "SERIAL-NUMBER",
         "SERIEN-NR"
+        ,"CPID"
+        ,"CP ID"
       ],
       "Required": true
     },
@@ -68,6 +70,9 @@
         "S W",
         "SW-VERSION",
         "SOFTWARE-VERSION"
+        ,"I-STUFE"
+        ,"I STUFE"
+        ,"ISTUFE"
       ],
       "Required": false
     }
