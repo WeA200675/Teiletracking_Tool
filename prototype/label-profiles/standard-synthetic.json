@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "synthetic": true,
+  "profile": "standard-label",
+  "regions": {
+    "PartNumber": { "x": 0.05, "y": 0.08, "width": 0.9, "height": 0.23 },
+    "SerialNumber": { "x": 0.05, "y": 0.3, "width": 0.9, "height": 0.23 },
+    "Hardware": { "x": 0.05, "y": 0.53, "width": 0.44, "height": 0.2 },
+    "Software": { "x": 0.51, "y": 0.53, "width": 0.44, "height": 0.2 }
+  },
+  "examples": {
+    "PartNumber": "SYN-PN-012345",
+    "SerialNumber": "SYN-SN-678901",
+    "Hardware": "SYN-HW-01",
+    "Software": "SYN-SW-02"
+  }
+}

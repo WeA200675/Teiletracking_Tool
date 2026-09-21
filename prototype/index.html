@@ -395,7 +395,19 @@
                                 <span class="hint">
                                     Werte bei Bedarf zuerst manuell korrigieren.
                                 </span>
+
+                                <button
+                                    id="exportOcrInsightButton"
+                                    class="button button-secondary button-small"
+                                    type="button"
+                                >
+                                    Anonymisierte Erkenntnis exportieren
+                                </button>
                             </div>
+
+                            <p id="ocrLearningStatus" class="hint" aria-live="polite">
+                                Exportiert werden ausschließlich Fehlermuster, Qualitätsklassen und synthetische Beispiele – niemals Foto, QR-Inhalt oder echte Werte.
+                            </p>
 
                             <p
                                 id="labelOcrStatus"
@@ -416,6 +428,7 @@
                 Beim Kamera-Workflow werden QR-Code und sichtbare Beschriftung aus derselben Labelaufnahme ausgewertet.
                 Die OCR-Feldzuordnung verwendet zunächst ein flexibles Test-Mapping für Bezeichnungen wie PN / Part No,
                 SN / Serial, HW / Hardware und SW / Software.
+                <a href="./label-trainer.html">Labelprofil auf dem Smartphone erstellen oder trainieren</a>.
             </p>
         </section>
 
@@ -842,8 +855,12 @@
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="./data-service.js"></script>
-    <script src="./scanner-service.js?v=focus-after-trigger-v2"></script>
-    <script src="./ocr-service.js"></script>
+    <script src="./image-quality-service.js?v=privacy-ocr-v1"></script>
+    <script src="./ocr-validation-service.js?v=privacy-ocr-v1"></script>
+    <script src="./ocr-learning-service.js?v=privacy-ocr-v1"></script>
+    <script src="./label-profile-service.js?v=1"></script>
+    <script src="./scanner-service.js?v=privacy-ocr-v1"></script>
+    <script src="./ocr-service.js?v=privacy-ocr-v1"></script>
     <script src="./migration-service.js"></script>
     <script src="./feature-service.js"></script>
     <script src="./app.js"></script>

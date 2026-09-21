@@ -1642,10 +1642,54 @@
                     "Scharfes Kamerabild wird übernommen …";
             }
 
-            const capture =
-                captureFrame(
-                    video
-                );
+            let capture;
+
+            if (
+                global.TeiletrackingImageQualityService &&
+                typeof global.TeiletrackingImageQualityService.captureBestFrame ===
+                    "function"
+            ) {
+                const bestFrame =
+                    await global.TeiletrackingImageQualityService
+                        .captureBestFrame(video);
+
+                if (!bestFrame.accepted) {
+                    const qualityError = new Error(
+                        `Bildqualität nicht ausreichend: ${bestFrame.reasons.join(", ")}`
+                    );
+                    qualityError.code = "IMAGE_QUALITY_REJECTED";
+                    throw qualityError;
+                }
+
+                capture = {
+                    canvas: bestFrame.canvas,
+                    context: bestFrame.context,
+                    quality: {
+                        brightness: bestFrame.metrics.brightness,
+                        edgeScore: bestFrame.metrics.sharpness,
+                        glarePercent: bestFrame.metrics.glarePercent,
+                        motion: bestFrame.metrics.motion,
+                        warnings: [],
+                        good: true
+                    },
+                    dataUrl: bestFrame.canvas.toDataURL("image/jpeg", 0.94),
+                    captureSource: `Bester Frame aus ${bestFrame.frameCount}`
+                };
+
+                lastDiagnostics = {
+                    resolution: `${capture.canvas.width}×${capture.canvas.height}`,
+                    captureSource: capture.captureSource,
+                    quality: capture.quality,
+                    qrAttempts: [],
+                    qrEngine: engineMode,
+                    qrFoundBy: "",
+                    liveQrText: lastLiveQrText,
+                    liveQrAt: lastLiveQrAt
+                };
+            }
+            else {
+                capture = captureFrame(video);
+            }
 
             capture.captureSource =
                 "Videoframe nach Autofokus";
@@ -1666,6 +1710,22 @@
             };
         }
         catch (error) {
+            if (
+                error &&
+                error.code === "IMAGE_QUALITY_REJECTED"
+            ) {
+                pendingHighResolutionCapture = null;
+                button.disabled = false;
+
+                if (status) {
+                    status.textContent =
+                        "Aufnahme abgelehnt: Bitte Handy ruhig halten, Label vollständig ausfüllen und Reflexionen vermeiden.";
+                    status.classList.add("error");
+                }
+
+                return;
+            }
+
             console.warn(
                 "Hochauflösende Aufnahme fehlgeschlagen. Videoframe wird verwendet.",
                 error

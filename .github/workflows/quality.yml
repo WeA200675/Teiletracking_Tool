@@ -1,0 +1,32 @@
+name: Quality checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  javascript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        run: |
+          for file in prototype/*.js tests/*.js; do
+            node --check "$file"
+          done
+      - name: Run OCR privacy tests
+        run: node tests/Test-OcrPrivacy.js
+
+  powershell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run PowerShell tests
+        shell: pwsh
+        run: ./tests/Run-AllTests.ps1

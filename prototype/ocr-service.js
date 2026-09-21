@@ -577,11 +577,23 @@
                 )
         };
 
-        return recoverExactQrValuesFromOcr(
+        const recovered = recoverExactQrValuesFromOcr(
             extracted,
             rawText,
             qrData
         );
+
+        if (
+            global.TeiletrackingOcrValidationService &&
+            typeof global.TeiletrackingOcrValidationService.validateRecord ===
+                "function"
+        ) {
+            return global.TeiletrackingOcrValidationService
+                .validateRecord(recovered, qrData)
+                .data;
+        }
+
+        return recovered;
     }
 
     function buildTrackingString(data) {
@@ -618,6 +630,26 @@
         ocrData,
         qrData
     ) {
+        if (
+            global.TeiletrackingOcrValidationService &&
+            typeof global.TeiletrackingOcrValidationService.validateRecord ===
+                "function"
+        ) {
+            const validation =
+                global.TeiletrackingOcrValidationService
+                    .validateRecord(ocrData, qrData);
+
+            const labels = {
+                partNumber: "PN",
+                serialNumber: "SN",
+                hardware: "HW",
+                software: "SW"
+            };
+
+            return validation.reviewFields
+                .map(fieldName => labels[fieldName] || fieldName);
+        }
+
         const missing = [];
 
         if (!ocrData.partNumber) {
@@ -1053,7 +1085,8 @@
 
     function getCandidateScore(
         ocrData,
-        confidence
+        confidence,
+        qrData = null
     ) {
         let score = 0;
 
@@ -1089,6 +1122,23 @@
         score +=
             normalizedConfidence /
             10;
+
+        if (
+            qrData &&
+            global.TeiletrackingOcrValidationService
+        ) {
+            const validation =
+                global.TeiletrackingOcrValidationService
+                    .validateRecord(ocrData, qrData);
+
+            for (const comparison of Object.values(validation.fields)) {
+                if (comparison.status === "EXACT") score += 80;
+                if (comparison.status === "CONFUSION_CORRECTED") score += 60;
+                if (comparison.status === "FUZZY_REVIEW") score += 10;
+                if (comparison.status === "MISMATCH") score -= 80;
+                if (comparison.status === "MISSING") score -= 100;
+            }
+        }
 
         return score;
     }
@@ -1178,12 +1228,78 @@
         const activeWorker =
             await getWorker();
 
+        let profileCandidate = null;
+        const profileService =
+            global.TeiletrackingLabelProfileService;
+        const activeProfile =
+            profileService &&
+            typeof profileService.getActiveProfile === "function"
+                ? profileService.getActiveProfile()
+                : null;
+
+        if (
+            activeProfile &&
+            activeProfile.regions &&
+            Object.keys(activeProfile.regions).length > 0
+        ) {
+            const profileData = {
+                partNumber: "",
+                serialNumber: "",
+                hardware: "",
+                software: ""
+            };
+            const profileRaw = [];
+
+            for (const [fieldName, region] of Object.entries(activeProfile.regions)) {
+                passLabel = `Profil ${activeProfile.name}: ${fieldName}`;
+                const crop = profileService.cropRegion(sourceCanvas, region);
+                const result = await activeWorker.recognize(crop, { rotateAuto: false });
+                const text = result && result.data ? String(result.data.text || "") : "";
+                const candidates = text.toUpperCase().match(/[A-Z0-9][A-Z0-9._/\-]*/g) || [];
+                const reference = qrData && qrData[fieldName] ? String(qrData[fieldName]) : "";
+
+                if (reference && global.TeiletrackingOcrValidationService) {
+                    candidates.sort((left, right) =>
+                        global.TeiletrackingOcrValidationService.levenshtein(left, reference) -
+                        global.TeiletrackingOcrValidationService.levenshtein(right, reference)
+                    );
+                }
+                else {
+                    candidates.sort((left, right) => right.length - left.length);
+                }
+
+                profileData[fieldName] = cleanFieldValue(candidates[0] || "");
+                profileRaw.push(`${fieldName}: ${text.trim()}`);
+            }
+
+            const validation =
+                global.TeiletrackingOcrValidationService
+                    ? global.TeiletrackingOcrValidationService.validateRecord(profileData, qrData)
+                    : { data: profileData, reviewFields: [], accepted: true };
+
+            profileCandidate = {
+                variantName: `Labelprofil: ${activeProfile.name}`,
+                rawText: profileRaw.join("\n"),
+                confidence: validation.accepted ? 100 : 0,
+                ocrData: validation.data,
+                missingFields: validation.reviewFields,
+                complete: validation.accepted,
+                score: getCandidateScore(validation.data, validation.accepted ? 100 : 0, qrData) + 40
+            };
+
+            if (profileCandidate.complete) {
+                passLabel = "";
+                progressCallback = null;
+                return profileCandidate;
+            }
+        }
+
         const variants =
             createImageVariants(
                 sourceCanvas
             );
 
-        let bestCandidate = null;
+        let bestCandidate = profileCandidate;
 
         for (
             let index = 0;
@@ -1257,7 +1373,8 @@
                 score:
                     getCandidateScore(
                         ocrData,
-                        confidence
+                        confidence,
+                        qrData
                     )
             };
 
