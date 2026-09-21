@@ -12,8 +12,8 @@
     let worker = null;
 
     const fieldLabels = {
-        partNumber: "PartNumber", serialNumber: "SerialNumber",
-        hardware: "Hardware", software: "Software"
+        partNumber: "PartNumber", serialNumber: "CPID",
+        hardware: "Hardware", software: "I-Stufe"
     };
     const colors = {
         partNumber: "#28b8ff", serialNumber: "#ffb52e",
