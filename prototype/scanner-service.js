@@ -1579,7 +1579,7 @@
 
         if (status) {
             status.textContent =
-                "Hochauflösendes Label-Foto wird aufgenommen …";
+                "Kamera fokussiert … Aufnahme in 2 Sekunden.";
 
             status.classList.remove(
                 "error"
@@ -1587,6 +1587,70 @@
         }
 
         try {
+            try {
+                const capabilities =
+                    typeof activeTrack.getCapabilities ===
+                    "function"
+                        ? activeTrack.getCapabilities()
+                        : {};
+
+                const focusModes =
+                    Array.isArray(
+                        capabilities.focusMode
+                    )
+                        ? capabilities.focusMode
+                        : [];
+
+                const focusMode =
+                    focusModes.includes(
+                        "single-shot"
+                    )
+                        ? "single-shot"
+                        : focusModes.includes(
+                            "continuous"
+                        )
+                            ? "continuous"
+                            : "";
+
+                if (focusMode) {
+                    await activeTrack
+                        .applyConstraints({
+                            advanced: [
+                                { focusMode }
+                            ]
+                        });
+                }
+            }
+            catch (error) {
+                console.warn(
+                    "Autofokus konnte nicht erneut angestoßen werden.",
+                    error
+                );
+            }
+
+            await delay(1000);
+
+            if (status) {
+                status.textContent =
+                    "Fokus stabilisieren … Aufnahme in 1 Sekunde.";
+            }
+
+            await delay(1000);
+
+            if (
+                !stream ||
+                !activeTrack ||
+                activeTrack.readyState === "ended"
+            ) {
+                button.disabled = false;
+                return;
+            }
+
+            if (status) {
+                status.textContent =
+                    "Hochauflösendes Label-Foto wird aufgenommen …";
+            }
+
             const capture =
                 await captureBestStill(
                     video
@@ -1637,13 +1701,17 @@
         style.textContent = `
             .scanner-overlay {
                 align-items: center !important;
+                min-height: 100vh !important;
+                min-height: 100dvh !important;
                 padding: 12px !important;
             }
 
             .scanner-dialog {
                 width: min(560px, 100%) !important;
                 max-height: calc(100vh - 24px) !important;
+                max-height: calc(100dvh - 24px) !important;
                 min-height: 0 !important;
+                margin-block: auto !important;
                 overflow-y: auto !important;
                 border-radius: 12px !important;
             }
@@ -1727,6 +1795,7 @@
 
                 .scanner-dialog {
                     max-height: calc(100vh - 16px) !important;
+                    max-height: calc(100dvh - 16px) !important;
                     border-radius: 10px !important;
                 }
 
