@@ -26,9 +26,9 @@
             <h2>2 · Feldbereich markieren</h2>
             <div class="field-picker" role="group" aria-label="Zu markierendes Feld">
                 <button type="button" data-field="partNumber" class="selected">PartNumber</button>
-                <button type="button" data-field="serialNumber">SerialNumber</button>
+                <button type="button" data-field="serialNumber">CPID</button>
                 <button type="button" data-field="hardware">Hardware</button>
-                <button type="button" data-field="software">Software</button>
+                <button type="button" data-field="software">I-Stufe</button>
             </div>
             <p class="help">Feld wählen und anschließend einen Rahmen direkt über dem Wert aufziehen. Ein neuer Rahmen ersetzt den bisherigen Bereich dieses Feldes.</p>
             <div class="canvas-shell"><canvas id="labelCanvas"></canvas></div>
@@ -40,9 +40,9 @@
             <p class="privacy">Sollwerte dienen nur zum lokalen Test und werden beim Speichern oder Exportieren verworfen.</p>
             <div class="expected-grid">
                 <label>PartNumber<input data-expected="partNumber" autocomplete="off"></label>
-                <label>SerialNumber<input data-expected="serialNumber" autocomplete="off"></label>
+                <label>CPID<input data-expected="serialNumber" autocomplete="off"></label>
                 <label>Hardware<input data-expected="hardware" autocomplete="off"></label>
-                <label>Software<input data-expected="software" autocomplete="off"></label>
+                <label>I-Stufe<input data-expected="software" autocomplete="off"></label>
             </div>
             <button id="runOcrButton" type="button" class="primary">Markierte Felder erkennen</button>
             <div id="ocrResults" class="results" aria-live="polite"></div>
@@ -68,6 +68,6 @@
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
     <script src="./ocr-learning-service.js?v=privacy-ocr-v1"></script>
     <script src="./label-profile-service.js?v=1"></script>
-    <script src="./label-trainer.js?v=1"></script>
+    <script src="./label-trainer.js?v=2"></script>
 </body>
 </html>
