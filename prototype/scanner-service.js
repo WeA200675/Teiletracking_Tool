@@ -729,51 +729,8 @@
     async function captureBestStill(
         videoElement
     ) {
-        let captureSource =
-            "Videoframe";
-        let capture = null;
-
-        if (
-            activeTrack &&
-            "ImageCapture" in global
-        ) {
-            try {
-                const imageCapture =
-                    new global.ImageCapture(
-                        activeTrack
-                    );
-
-                if (
-                    typeof imageCapture.takePhoto ===
-                    "function"
-                ) {
-                    const blob =
-                        await imageCapture
-                            .takePhoto();
-
-                    capture =
-                        await canvasFromBlob(
-                            blob
-                        );
-
-                    captureSource =
-                        "Kamera-Foto";
-                }
-            }
-            catch (error) {
-                console.warn(
-                    "Hochauflösendes Kamera-Foto nicht verfügbar. Videoframe wird verwendet.",
-                    error
-                );
-            }
-        }
-
-        if (!capture) {
-            capture =
-                canvasFromVideo(
-                    videoElement
-                );
-        }
+        const capture = canvasFromVideo(videoElement);
+        const captureSource = "Zentrierter Vorschau-Frame";
 
         const quality =
             calculateImageQuality(
