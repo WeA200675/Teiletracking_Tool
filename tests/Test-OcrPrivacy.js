@@ -206,5 +206,8 @@ assert.equal(
     true,
     "Hardware muss in der Teileliste sichtbar sein."
 );
+assert.equal(indexSource.includes('id="forceDuplicateSaveButton"'), true);
+assert.equal(appSource.includes('AssignmentKey: `${baseAssignmentKey}_${instanceNumber}`'), true);
+assert.equal(appSource.includes('DuplicateStatus: "DUPLICATE_ALLOWED"'), true);
 
 console.log("OCR privacy and validation tests: PASS");

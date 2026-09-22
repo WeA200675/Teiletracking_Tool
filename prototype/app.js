@@ -8,6 +8,7 @@ const state = {
     savedItems: [],
     currentRecord: null,
     editingLocalId: null,
+    forceDuplicateSave: false,
     qrScannerRunning: false,
     pendingQrText: "",
     capturedLabelImageDataUrl: null,
@@ -43,6 +44,7 @@ const elements = {
     qrHardwareField: document.getElementById("qrHardwareField"),
     checkButton: document.getElementById("checkButton"),
     saveButton: document.getElementById("saveButton"),
+    forceDuplicateSaveButton: document.getElementById("forceDuplicateSaveButton"),
     resetButton: document.getElementById("resetButton"),
     resultCard: document.getElementById("resultCard"),
     resultTitle: document.getElementById("resultTitle"),
@@ -860,6 +862,10 @@ function renderRecord(record) {
 
     elements.saveButton.disabled =
         record.DuplicateStatus === "DUPLICATE";
+    elements.forceDuplicateSaveButton.classList.toggle(
+        "hidden",
+        state.editingLocalId || record.DuplicateStatus !== "DUPLICATE"
+    );
 }
 
 function renderError(error) {
@@ -868,6 +874,7 @@ function renderError(error) {
 
     state.currentRecord = null;
     elements.saveButton.disabled = true;
+    elements.forceDuplicateSaveButton.classList.add("hidden");
 
     elements.resultCard.classList.remove("hidden");
     elements.resultCard.classList.add("status-error");
@@ -4255,6 +4262,7 @@ async function saveCurrentRecord() {
 
     if (
         !state.editingLocalId &&
+        !state.forceDuplicateSave &&
         state.currentRecord.DuplicateStatus ===
         "DUPLICATE"
     ) {
@@ -4286,6 +4294,26 @@ async function saveCurrentRecord() {
         return;
     }
 
+    let recordToSave = state.currentRecord;
+    if (state.forceDuplicateSave) {
+        const baseAssignmentKey = normalizeText(state.currentRecord.AssignmentKey);
+        let highestInstance = 0;
+        for (const item of getAllTrackingItems()) {
+            const itemBase = normalizeText(item.BaseAssignmentKey || item.AssignmentKey).replace(/_\d+$/, "");
+            if (itemBase !== baseAssignmentKey) continue;
+            const suffix = normalizeText(item.AssignmentKey).match(/_(\d+)$/);
+            highestInstance = Math.max(highestInstance, suffix ? Number(suffix[1]) : 0);
+        }
+        const instanceNumber = highestInstance + 1;
+        recordToSave = {
+            ...state.currentRecord,
+            BaseAssignmentKey: baseAssignmentKey,
+            InstanceNumber: instanceNumber,
+            AssignmentKey: `${baseAssignmentKey}_${instanceNumber}`,
+            DuplicateStatus: "DUPLICATE_ALLOWED"
+        };
+    }
+
     const sourceDeviceId =
         TeiletrackingDataService
             .getOrCreateDeviceId();
@@ -4303,9 +4331,9 @@ async function saveCurrentRecord() {
 
     const savedRecord =
         normalizeStoredTrackingRecord({
-            ...state.currentRecord,
+            ...recordToSave,
             MismatchFields: [
-                ...state.currentRecord.MismatchFields
+                ...recordToSave.MismatchFields
             ],
             SavedAt:
                 new Date()
@@ -4334,11 +4362,19 @@ async function saveCurrentRecord() {
     renderSavedItems();
     updateDataStatus();
 
-    checkCurrentInput();
+    if (state.forceDuplicateSave) {
+        state.forceDuplicateSave = false;
+        resetForm();
+        showTrackingTransferMessage(`Weiteres gleiches Teil als ${recordToSave.AssignmentKey} gespeichert.`, "success");
+    }
+    else {
+        checkCurrentInput();
+    }
 }
 
 function resetForm() {
     state.editingLocalId = null;
+    state.forceDuplicateSave = false;
     elements.saveButton.textContent = "Lokal speichern";
     elements.derivat.value = "";
     elements.iStufe.value = "";
@@ -4362,6 +4398,7 @@ function resetForm() {
         .classList.add("hidden");
     elements.saveButton.disabled =
         true;
+    elements.forceDuplicateSaveButton.classList.add("hidden");
 
     clearComparison();
 
@@ -4468,6 +4505,14 @@ elements.checkButton.addEventListener(
 elements.saveButton.addEventListener(
     "click",
     saveCurrentRecord
+);
+
+elements.forceDuplicateSaveButton.addEventListener(
+    "click",
+    () => {
+        state.forceDuplicateSave = true;
+        saveCurrentRecord();
+    }
 );
 
 elements.resetButton.addEventListener(
