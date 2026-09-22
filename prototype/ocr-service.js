@@ -1466,6 +1466,97 @@
         }
     }
 
+    function rotateCanvas(sourceCanvas, clockwise) {
+        const canvas = document.createElement("canvas");
+        canvas.width = sourceCanvas.height;
+        canvas.height = sourceCanvas.width;
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        context.translate(canvas.width / 2, canvas.height / 2);
+        context.rotate(clockwise ? Math.PI / 2 : -Math.PI / 2);
+        context.drawImage(sourceCanvas, -sourceCanvas.width / 2, -sourceCanvas.height / 2);
+        return canvas;
+    }
+
+    function cropTextSide(sourceCanvas, rightSide) {
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(sourceCanvas.width * 0.68);
+        canvas.height = sourceCanvas.height;
+        const context = canvas.getContext("2d", { willReadFrequently: true });
+        const sourceX = rightSide ? sourceCanvas.width - canvas.width : 0;
+        context.drawImage(sourceCanvas, sourceX, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
+        return createGrayscaleContrastCanvas(canvas);
+    }
+
+    function parseStructuredLabelText(rawText, qrData) {
+        const tokens = String(rawText || "")
+            .toUpperCase()
+            .match(/[A-Z0-9][A-Z0-9._-]{2,}/g) || [];
+        const partNumber = normalizeText(qrData && qrData.partNumber);
+        const serialNumber = normalizeText(qrData && qrData.serialNumber);
+        const partIndex = tokens.findIndex(token => token === partNumber);
+        const serialIndex = tokens.findIndex(token => token === serialNumber);
+        const anchorIndex = Math.max(partIndex, serialIndex);
+        if (anchorIndex < 0) return null;
+
+        const remaining = tokens.slice(anchorIndex + 1);
+        const firstDateIndex = remaining.findIndex(token => /^\d{2}\.\d{2}\.\d{4}$/.test(token));
+        if (firstDateIndex < 0) return null;
+        const afterDate = remaining.slice(firstDateIndex + 1);
+        const secondDateIndex = afterDate.findIndex(token => /^\d{2}\.\d{2}\.\d{4}$/.test(token));
+        const useful = secondDateIndex >= 0 ? afterDate.slice(0, secondDateIndex) : afterDate;
+        if (useful.length < 2) return null;
+
+        return {
+            software: cleanFieldValue(useful[0]),
+            hardware: useful.slice(1).map(cleanFieldValue).filter(Boolean).join(""),
+            rawText
+        };
+    }
+
+    async function recognizeStructuredLabel(sourceCanvas, qrData, options = {}) {
+        progressCallback = typeof options.onProgress === "function" ? options.onProgress : null;
+        passLabel = "Hardware-OCR";
+        try {
+            const activeWorker = await getWorker();
+            await activeWorker.setParameters({
+                preserve_interword_spaces: "1",
+                tessedit_pageseg_mode: global.Tesseract.PSM && global.Tesseract.PSM.SINGLE_BLOCK !== undefined
+                    ? global.Tesseract.PSM.SINGLE_BLOCK
+                    : "6",
+                tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._"
+            });
+
+            const variants = [];
+            for (const clockwise of [true, false]) {
+                const rotated = rotateCanvas(sourceCanvas, clockwise);
+                variants.push(cropTextSide(rotated, true), cropTextSide(rotated, false));
+            }
+
+            let best = null;
+            for (const variant of variants) {
+                const result = await activeWorker.recognize(variant, { rotateAuto: false });
+                const rawText = result && result.data ? String(result.data.text || "") : "";
+                const parsed = parseStructuredLabelText(rawText, qrData);
+                if (parsed && parsed.hardware) {
+                    best = {
+                        ...parsed,
+                        confidence: Number(result.data.confidence || 0)
+                    };
+                    break;
+                }
+            }
+
+            if (!best) {
+                throw new Error("Hardware konnte in den Beschriftungszeilen 5 und 6 nicht sicher erkannt werden.");
+            }
+            return best;
+        }
+        finally {
+            passLabel = "";
+            progressCallback = null;
+        }
+    }
+
     async function terminate() {
         progressCallback = null;
         passLabel = "";
@@ -1488,6 +1579,7 @@
         getProfileName,
         recognizeBest,
         recognizeProfileField,
+        recognizeStructuredLabel,
         buildTrackingString,
         getMissingFieldsForQr,
         terminate

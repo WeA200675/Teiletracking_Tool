@@ -129,7 +129,7 @@ for (const fieldId of [
     );
 }
 assert.equal(indexSource.includes('id="openIStufeOcrButton"'), false);
-assert.equal(indexSource.includes("Label fotografieren &amp; QR übernehmen"), true);
+assert.equal(indexSource.includes("Label fotografieren &amp; QR + OCR übernehmen"), true);
 assert.equal(indexSource.includes("Foto aufnehmen &amp; QR übernehmen"), true);
 const captureButtonMarkup = indexSource.match(
     /<button[^>]*id="captureLabelButton"[^>]*>/
@@ -184,6 +184,17 @@ assert.match(
     appSource,
     /item\.LocalId !== state\.editingLocalId/,
     "Der bearbeitete Datensatz darf sich nicht selbst als Duplikat erkennen."
+);
+assert.equal(appSource.includes("recognizeStructuredLabel"), true);
+assert.equal(indexSource.includes("Wird per OCR aus den Labelzeilen 5 und 6 gelesen"), true);
+assert.equal(
+    appSource.includes("elements.qrHardwareField.value = parsed.hardware"),
+    false,
+    "Hardware darf niemals aus dem QR-Code in das Eingabefeld geschrieben werden."
+);
+assert.equal(
+    appSource.includes("Hardware wurde ausschließlich per OCR"),
+    true
 );
 
 console.log("OCR privacy and validation tests: PASS");

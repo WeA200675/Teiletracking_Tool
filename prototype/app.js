@@ -406,9 +406,6 @@ function populateQrFields(qrText) {
 
     elements.qrPartNumberField.value = parsed.partNumber;
     elements.qrCpidField.value = parsed.serialNumber;
-    if (parsed.hardware) {
-        elements.qrHardwareField.value = parsed.hardware;
-    }
     syncQrTextFromFields();
 }
 
@@ -2577,9 +2574,33 @@ async function captureLabelPhoto() {
             try {
                 populateQrFields(qrText);
                 state.pendingQrText = qrText;
+                let hardwareRecognized = false;
+                try {
+                    const ocr = await TeiletrackingOcrService.recognizeStructuredLabel(
+                        canvas,
+                        {
+                            partNumber: elements.qrPartNumberField.value,
+                            serialNumber: elements.qrCpidField.value
+                        },
+                        { onProgress: updateLabelOcrServiceProgress }
+                    );
+                    if (ocr.hardware) {
+                        elements.qrHardwareField.value = normalizeText(ocr.hardware);
+                        hardwareRecognized = true;
+                    }
+                    if (ocr.software) {
+                        ensureSelectValue(elements.iStufe, ocr.software);
+                    }
+                    syncQrTextFromFields();
+                }
+                catch (ocrError) {
+                    console.warn("Hardware-OCR nicht eindeutig:", ocrError);
+                }
                 registerLabelScanSuccess();
                 setQrScanResult(
-                    "Foto übernommen. PartNumber und CPID wurden aus dem QR-Code in die Felder geschrieben. Hardware folgt separat aus der Label-Beschriftung.",
+                    hardwareRecognized
+                        ? "Foto übernommen. PartNumber und CPID stammen aus dem QR-Code; Hardware wurde ausschließlich per OCR aus den Beschriftungszeilen 5 und 6 übernommen."
+                        : "PartNumber und CPID wurden aus dem QR-Code übernommen. Hardware konnte per OCR nicht sicher erkannt werden und bleibt zur manuellen Eingabe frei.",
                     "success"
                 );
             }
