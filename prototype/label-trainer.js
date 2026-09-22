@@ -5,6 +5,8 @@
     const context = canvas.getContext("2d");
     const image = new Image();
     const regions = {};
+    const fieldMappings = {};
+    let qrValues = [];
     let selectedField = "partNumber";
     let dragStart = null;
     let draftRegion = null;
@@ -85,6 +87,7 @@
         button.addEventListener("click", () => {
             selectedField = button.dataset.field;
             document.querySelectorAll("[data-field]").forEach(item => item.classList.toggle("selected", item === button));
+            renderQrCandidates();
         });
     });
 
@@ -93,6 +96,9 @@
         if (!file) return;
         const url = URL.createObjectURL(file);
         image.onload = () => {
+            qrValues = [];
+            for (const field of Object.keys(fieldMappings)) delete fieldMappings[field];
+            document.querySelectorAll("[data-expected]").forEach(input => { input.value = ""; });
             const scale = Math.min(1, 1600 / image.naturalWidth);
             canvas.width = Math.round(image.naturalWidth * scale);
             canvas.height = Math.round(image.naturalHeight * scale);
@@ -106,11 +112,13 @@
     function buildProfile() {
         const name = document.getElementById("profileName").value.trim();
         if (!name) throw new Error("Bitte einen Profilnamen eingeben.");
-        if (Object.keys(regions).length === 0) throw new Error("Bitte mindestens einen Feldbereich markieren.");
+        if (Object.keys(fieldMappings).length === 0) throw new Error("Bitte mindestens einen QR-Wert einem Feld zuordnen.");
         return {
             schemaVersion: 1, synthetic: true,
             id: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `profile-${Date.now()}`,
-            name, regions,
+            name,
+            regions: {},
+            mappings: fieldMappings,
             preprocessing: {
                 contrast: document.getElementById("contrastOption").checked,
                 threshold: document.getElementById("thresholdOption").checked
@@ -126,27 +134,45 @@
     function renderQrCandidates(qrText) {
         const target = document.getElementById("qrCandidates");
         target.innerHTML = "";
-        const values = String(qrText || "")
-            .split(/[|;,\n\r\t]+/)
-            .map(value => value.trim())
-            .filter(Boolean)
-            .map(value => value.includes("=") ? value.slice(value.indexOf("=") + 1).trim() : value);
-        const unique = [...new Set(values)];
-        if (!unique.length) return;
+        if (typeof qrText === "string") {
+            const values = qrText
+                .split(/[|;,\n\r\t]+/)
+                .map(value => value.trim())
+                .filter(Boolean)
+                .map(value => value.includes("=") ? value.slice(value.indexOf("=") + 1).trim() : value);
+            qrValues = [...new Set(values)];
+        }
+        if (!qrValues.length) {
+            target.textContent = "Bitte zuerst einen QR-/DataMatrix-Code aufnehmen.";
+            return;
+        }
         const help = document.createElement("p");
-        help.textContent = "Feld oben auswählen und dann den passenden QR-Wert antippen:";
+        help.textContent = `Ausgewählt: ${fieldLabels[selectedField]}. Passenden Wert antippen:`;
         target.appendChild(help);
-        for (const value of unique) {
+        qrValues.forEach((value, index) => {
             const button = document.createElement("button");
             button.type = "button";
-            button.textContent = value;
+            const assignedFields = Object.entries(fieldMappings)
+                .filter(([, mappedIndex]) => mappedIndex === index)
+                .map(([field]) => fieldLabels[field]);
+            button.textContent = assignedFields.length
+                ? `${value} → ${assignedFields.join(", ")}`
+                : value;
+            const selected = fieldMappings[selectedField] === index;
+            button.classList.toggle("selected", selected);
+            if (selected) {
+                button.style.borderColor = colors[selectedField];
+                button.style.boxShadow = `inset 0 0 0 2px ${colors[selectedField]}`;
+            }
             button.addEventListener("click", () => {
                 const input = document.querySelector(`[data-expected="${selectedField}"]`);
                 if (input) input.value = value;
+                fieldMappings[selectedField] = index;
                 setStatus(`${value} wurde ${fieldLabels[selectedField]} zugeordnet.`);
+                renderQrCandidates();
             });
             target.appendChild(button);
-        }
+        });
     }
 
     async function decodeQr() {

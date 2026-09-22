@@ -21,9 +21,14 @@
 
     function sanitizeProfile(profile = {}) {
         const regions = {};
+        const mappings = {};
         for (const field of FIELD_TYPES) {
             if (profile.regions && profile.regions[field]) {
                 regions[field] = normalizeRegion(profile.regions[field]);
+            }
+            const index = Number(profile.mappings && profile.mappings[field]);
+            if (Number.isInteger(index) && index >= 0 && index <= 99) {
+                mappings[field] = index;
             }
         }
         return {
@@ -34,6 +39,7 @@
                 .slice(0, 80),
             name: String(profile.name || "Labelprofil").trim().slice(0, 80),
             regions,
+            mappings,
             preprocessing: {
                 contrast: Boolean(profile.preprocessing && profile.preprocessing.contrast),
                 threshold: Boolean(profile.preprocessing && profile.preprocessing.threshold),
@@ -52,7 +58,10 @@
         if (!profile || profile.synthetic !== true || profile.schemaVersion !== 1) return false;
         const serialized = JSON.stringify(profile);
         if (/(data:image|base64|rawText|expectedValue|qrText|PN=|SN=)/i.test(serialized)) return false;
-        return Object.keys(profile.regions || {}).every(field => FIELD_TYPES.includes(field));
+        return Object.keys(profile.regions || {}).every(field => FIELD_TYPES.includes(field)) &&
+            Object.entries(profile.mappings || {}).every(([field, index]) =>
+                FIELD_TYPES.includes(field) && Number.isInteger(index) && index >= 0 && index <= 99
+            );
     }
 
     function loadProfiles() {

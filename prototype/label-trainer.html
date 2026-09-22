@@ -21,19 +21,18 @@
             </label>
             <p class="privacy">Es wird ausschließlich der QR-/DataMatrix-Code ausgewertet. Bild und Werte bleiben flüchtig in diesem Browser-Tab.</p>
             <label>QR-Ausgabe<textarea id="qrOutput" rows="4" readonly placeholder="Nach der Aufnahme wird der QR-Inhalt hier angezeigt."></textarea></label>
-            <div id="qrCandidates" class="qr-candidates" aria-live="polite"></div>
         </section>
 
         <section class="panel">
-            <h2>2 · Feldbereich markieren</h2>
+            <h2>2 · QR-Werte markieren und zuordnen</h2>
             <div class="field-picker" role="group" aria-label="Zu markierendes Feld">
                 <button type="button" data-field="partNumber" class="selected">PartNumber</button>
                 <button type="button" data-field="serialNumber">CPID</button>
                 <button type="button" data-field="hardware">Hardware</button>
             </div>
-            <p class="help">Feld wählen und anschließend einen Rahmen direkt über dem Wert aufziehen. Ein neuer Rahmen ersetzt den bisherigen Bereich dieses Feldes.</p>
-            <div class="canvas-shell"><canvas id="labelCanvas"></canvas></div>
-            <div id="regionList" class="region-list"></div>
+            <p class="help">Feld wählen und anschließend den passenden erkannten QR-Wert antippen. Das Kamerabild wird nach dem Auslesen nicht mehr angezeigt.</p>
+            <div id="qrCandidates" class="qr-candidates" aria-live="polite">Bitte zuerst einen QR-/DataMatrix-Code aufnehmen.</div>
+            <canvas id="labelCanvas" hidden aria-hidden="true"></canvas>
         </section>
 
         <section class="panel">
@@ -66,7 +65,7 @@
     </main>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
     <script src="./scanner-service.js?v=label-tool-qr-v1"></script>
-    <script src="./label-profile-service.js?v=1"></script>
-    <script src="./label-trainer.js?v=4"></script>
+    <script src="./label-profile-service.js?v=qr-mapping-v1"></script>
+    <script src="./label-trainer.js?v=5"></script>
 </body>
 </html>
