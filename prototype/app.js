@@ -7,6 +7,7 @@ const state = {
     initialTrackingData: [],
     savedItems: [],
     currentRecord: null,
+    editingLocalId: null,
     qrScannerRunning: false,
     pendingQrText: "",
     capturedLabelImageDataUrl: null,
@@ -513,7 +514,9 @@ function getAllTrackingItems() {
 }
 
 function getDuplicateStatus(deviceKey, assignmentKey) {
-    const items = getAllTrackingItems();
+    const items = getAllTrackingItems().filter(
+        item => !state.editingLocalId || item.LocalId !== state.editingLocalId
+    );
 
     const assignmentExists = items.some(
         item => normalizeText(item.AssignmentKey) === normalizeText(assignmentKey)
@@ -3958,6 +3961,20 @@ function createTrackingItem(record) {
     actions.appendChild(detailButton);
 
     if (isLocal) {
+        const editButton = document.createElement("button");
+        editButton.type = "button";
+        editButton.className = "mini-button";
+        editButton.textContent = "Bearbeiten";
+
+        editButton.addEventListener(
+            "click",
+            () => {
+                editLocalTrackingRecord(record.LocalId);
+            }
+        );
+
+        actions.appendChild(editButton);
+
         const deleteButton = document.createElement("button");
         deleteButton.type = "button";
         deleteButton.className = "mini-button delete";
@@ -3978,6 +3995,43 @@ function createTrackingItem(record) {
     item.append(main, actions);
 
     return item;
+}
+
+function ensureSelectValue(select, value) {
+    const normalized = normalizeText(value);
+    if (!select || !normalized) return;
+    if (![...select.options].some(option => normalizeText(option.value) === normalized)) {
+        const option = document.createElement("option");
+        option.value = normalized;
+        option.textContent = `${normalized} (gespeichert)`;
+        select.appendChild(option);
+    }
+    select.value = [...select.options]
+        .find(option => normalizeText(option.value) === normalized)?.value || "";
+}
+
+function editLocalTrackingRecord(localId) {
+    const record = state.savedItems.find(item => item.LocalId === localId);
+    if (!record) return;
+
+    state.editingLocalId = localId;
+    elements.qrPartNumberField.value = normalizeText(record.PartNumber);
+    elements.qrCpidField.value = normalizeText(record.SerialNumber);
+    elements.qrHardwareField.value = normalizeText(record.LabelHardware || record.QRHardware);
+    syncQrTextFromFields();
+
+    ensureSelectValue(elements.derivat, record.Derivat);
+    ensureSelectValue(elements.iStufe, record.IStufe);
+    ensureSelectValue(elements.ats, record.ATS);
+    ensureSelectValue(elements.yNummer, record.YNummer);
+    TeiletrackingFeatureService.setSelectedStatuses(record.PartStatuses || record.Teilestatus);
+
+    elements.saveButton.textContent = "Änderungen speichern";
+    closeTrackingDetail();
+    checkCurrentInput();
+    elements.qrPartNumberField.scrollIntoView({ behavior: "smooth", block: "center" });
+    elements.qrPartNumberField.focus();
+    setQrScanResult("Bearbeitungsmodus: Werte ändern, prüfen und anschließend „Änderungen speichern“ wählen.", "success");
 }
 
 function renderSavedItems() {
@@ -4177,9 +4231,35 @@ async function saveCurrentRecord() {
     }
 
     if (
+        !state.editingLocalId &&
         state.currentRecord.DuplicateStatus ===
         "DUPLICATE"
     ) {
+        return;
+    }
+
+    if (state.editingLocalId) {
+        const index = state.savedItems.findIndex(item => item.LocalId === state.editingLocalId);
+        if (index < 0) return;
+        const original = state.savedItems[index];
+        state.savedItems[index] = normalizeStoredTrackingRecord({
+            ...original,
+            ...state.currentRecord,
+            MismatchFields: [...state.currentRecord.MismatchFields],
+            LocalId: original.LocalId,
+            SourceRecordId: original.SourceRecordId,
+            SourceDeviceId: original.SourceDeviceId,
+            SavedAt: original.SavedAt,
+            UpdatedAt: new Date().toISOString()
+        });
+        state.editingLocalId = null;
+        elements.saveButton.textContent = "Lokal speichern";
+        await saveTrackingData();
+        refreshTrackingFilterOptions();
+        renderSavedItems();
+        updateDataStatus();
+        resetForm();
+        showTrackingTransferMessage("Datensatz wurde aktualisiert.", "success");
         return;
     }
 
@@ -4235,6 +4315,8 @@ async function saveCurrentRecord() {
 }
 
 function resetForm() {
+    state.editingLocalId = null;
+    elements.saveButton.textContent = "Lokal speichern";
     elements.derivat.value = "";
     elements.iStufe.value = "";
     elements.labelInput.value = "";

@@ -177,5 +177,13 @@ assert.equal(
     false,
     "Hardware darf nicht mehr als QR-Wert bestätigt werden."
 );
+assert.equal(appSource.includes('editButton.textContent = "Bearbeiten"'), true);
+assert.equal(appSource.includes('elements.saveButton.textContent = "Änderungen speichern"'), true);
+assert.equal(appSource.includes("UpdatedAt: new Date().toISOString()"), true);
+assert.match(
+    appSource,
+    /item\.LocalId !== state\.editingLocalId/,
+    "Der bearbeitete Datensatz darf sich nicht selbst als Duplikat erkennen."
+);
 
 console.log("OCR privacy and validation tests: PASS");
