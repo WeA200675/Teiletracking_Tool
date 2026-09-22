@@ -8,7 +8,7 @@ const state = {
     savedItems: [],
     currentRecord: null,
     qrScannerRunning: false,
-    scannerMode: "qr",
+    pendingQrText: "",
     capturedLabelImageDataUrl: null,
     capturedLabelCapturedAt: null,
     labelOcrBusy: false,
@@ -99,7 +99,6 @@ const elements = {
     trackingImportFile: document.getElementById("trackingImportFile"),
     trackingTransferMessage: document.getElementById("trackingTransferMessage"),
     openQrScannerButton: document.getElementById("openQrScannerButton"),
-    openIStufeOcrButton: document.getElementById("openIStufeOcrButton"),
     qrScanResult: document.getElementById("qrScanResult"),
     qrScannerOverlay: document.getElementById("qrScannerOverlay"),
     qrScannerVideo: document.getElementById("qrScannerVideo"),
@@ -2456,29 +2455,46 @@ async function captureLabelPhoto() {
         return;
     }
 
+    state.labelOcrBusy = true;
     elements.captureLabelButton.disabled = true;
 
     try {
-        clearLabelOcrResult();
         hideScanRetryHint();
 
         setQrScannerStatus(
-            "Label wird aufgenommen. Danach werden QR-Code und sichtbare Beschriftung aus demselben Foto gelesen …"
+            "Foto wurde aufgenommen. QR-Code und I-Stufe werden jetzt aus demselben Bild gelesen …"
         );
 
-        const { canvas, context } =
+        const { canvas, context, dataUrl } =
             createCapturedLabelCanvas();
 
-        const dataUrl =
-            canvas.toDataURL(
-                "image/jpeg",
-                0.92
-            );
+        const [qrDetection, ocrDetection] =
+            await Promise.allSettled([
+                detectQrFromCapturedCanvas(
+                    canvas,
+                    context
+                ),
+                TeiletrackingOcrService
+                    .recognizeProfileField(
+                        canvas,
+                        "software",
+                        {
+                            onProgress:
+                                updateLabelOcrServiceProgress
+                        }
+                    )
+            ]);
 
+        const capturedQrText =
+            qrDetection.status === "fulfilled"
+                ? normalizeDescription(qrDetection.value)
+                : "";
         const qrText =
-            await detectQrFromCapturedCanvas(
-                canvas,
-                context
+            capturedQrText ||
+            state.pendingQrText ||
+            normalizeDescription(
+                TeiletrackingScannerService
+                    .getLiveQrText()
             );
 
         const diagnostics =
@@ -2512,133 +2528,59 @@ async function captureLabelPhoto() {
                     : "");
         }
 
+        const reasons = [];
         let qrReadable = false;
-        let qrFailureReason = "";
-
-        showCapturedLabelPreview(
-            dataUrl,
-            qrText
-                ? "Foto gespeichert. QR-Code erkannt. Sichtbare Beschriftung wird jetzt mit mehreren Bildvarianten per OCR gelesen."
-                : "Foto gespeichert. Kein QR-Code erkannt. Die sichtbare Beschriftung wird trotzdem per OCR gelesen."
-        );
+        let ocrReadable = false;
 
         if (qrText) {
-            elements.qrInput.value =
-                qrText;
-
             try {
-                parseTrackingString(
-                    qrText,
-                    { allowUnknown: true }
-                );
-
+                populateQrFields(qrText);
+                state.pendingQrText = qrText;
                 qrReadable = true;
-
-                setQrScanResult(
-                    "QR-Code aus der Labelaufnahme erkannt.",
-                    "success"
-                );
-
-                setQrScannerStatus(
-                    "QR-Code erkannt. OCR der sichtbaren Beschriftung läuft …"
-                );
             }
             catch (error) {
-                qrFailureReason =
-                    "Der QR-Code wurde erkannt, konnte aber nicht vollständig ausgewertet werden.";
-
-                setQrScanResult(
-                    "QR-Code erkannt, aber das Datenformat passt noch nicht zum aktuellen Parser.",
-                    "error"
-                );
-
-                setQrScannerStatus(
-                    `QR-Code erkannt. OCR läuft trotzdem weiter. QR-Format: ${error.message}`,
-                    "error"
-                );
+                reasons.push(`QR-Code: ${error.message}`);
             }
         }
         else {
-            qrFailureReason =
-                "Der QR-Code war nicht lesbar.";
-
-            setQrScanResult(
-                "Label aufgenommen, aber kein QR-Code erkannt.",
-                "error"
-            );
-
-            setQrScannerStatus(
-                "Kein QR-Code erkannt. OCR der sichtbaren Beschriftung läuft trotzdem …"
-            );
+            reasons.push("QR-/DataMatrix-Code wurde nicht erkannt.");
         }
 
-        let ocrResult = null;
-
-        try {
-            ocrResult =
-                await recognizeVisibleLabelText(
-                    canvas,
-                    qrText
+        if (ocrDetection.status === "fulfilled") {
+            try {
+                selectRecognizedIStufe(
+                    ocrDetection.value.value
                 );
+                ocrReadable = true;
+            }
+            catch (error) {
+                reasons.push(`I-Stufe: ${error.message}`);
+            }
         }
-        catch (error) {
-            console.error(
-                "Label-OCR fehlgeschlagen:",
-                error
+        else {
+            reasons.push(
+                `I-Stufe: ${ocrDetection.reason && ocrDetection.reason.message || "OCR-Erkennung fehlgeschlagen."}`
             );
         }
 
-        const ocrComplete =
-            Boolean(
-                ocrResult &&
-                ocrResult.complete
-            );
+        showCapturedLabelPreview(
+            dataUrl || canvas.toDataURL("image/jpeg", 0.92),
+            "Diese Aufnahme wird nur lokal als Vorschau gehalten und nicht ins Repository übertragen."
+        );
 
-        const scanComplete =
-            qrReadable &&
-            ocrComplete;
-
-        if (scanComplete) {
+        if (qrReadable && ocrReadable) {
             registerLabelScanSuccess();
-
-            setQrScannerStatus(
-                `Aufnahme erfolgreich. QR-Code und sichtbare Label-Beschriftung wurden gelesen. Beste OCR-Variante: ${ocrResult.variantName}. Bitte die OCR-Werte kontrollieren und anschließend übernehmen.`,
+            setQrScanResult(
+                "Label vollständig erfasst: PartNumber, CPID, Hardware und I-Stufe wurden in die Felder geschrieben.",
                 "success"
             );
-
+            closeQrScanner();
             return;
         }
 
-        const reasons = [];
-
-        if (!qrReadable) {
-            reasons.push(
-                qrFailureReason ||
-                "Der QR-Code war nicht lesbar."
-            );
-        }
-
-        if (!ocrComplete) {
-            if (
-                ocrResult &&
-                Array.isArray(
-                    ocrResult.missingFields
-                ) &&
-                ocrResult.missingFields.length > 0
-            ) {
-                reasons.push(
-                    `OCR unvollständig: ${ocrResult.missingFields.join(", ")}.`
-                );
-            }
-            else {
-                reasons.push(
-                    "Die sichtbare Label-Beschriftung war nicht vollständig lesbar."
-                );
-            }
-        }
-
-        registerLabelScanFailure(
-            reasons.join(" ")
+        setQrScannerStatus(
+            `Aufnahme unvollständig: ${reasons.join(" ")} Die bereits erkannten Werte wurden trotzdem eingetragen. Bitte erneut aufnehmen.`,
+            "error"
         );
     }
     catch (error) {
@@ -2653,6 +2595,7 @@ async function captureLabelPhoto() {
         );
     }
     finally {
+        state.labelOcrBusy = false;
         elements.captureLabelButton.disabled = false;
     }
 }
@@ -2696,9 +2639,14 @@ async function startQrScannerCamera() {
 
 
 async function openQrScanner() {
-    state.scannerMode = "qr";
-    elements.captureLabelButton.hidden = true;
-    elements.captureLabelButton.classList.add("hidden");
+    state.pendingQrText = "";
+    elements.captureLabelButton.hidden = false;
+    elements.captureLabelButton.classList.remove("hidden");
+    elements.captureLabelButton.textContent = "Foto aufnehmen & auswerten";
+    const scannerTitle = document.getElementById("qrScannerTitle");
+    if (scannerTitle) {
+        scannerTitle.textContent = "Gesamtes Label erfassen";
+    }
     setQrScanResult("");
     resetLabelScanAttempts();
 
@@ -2711,19 +2659,9 @@ async function openQrScanner() {
     );
 
     await startQrScannerCamera();
-}
-
-async function openIStufeOcrScanner() {
-    state.scannerMode = "i-stufe-ocr";
-    elements.captureLabelButton.hidden = false;
-    elements.captureLabelButton.classList.remove("hidden");
-    elements.captureLabelButton.textContent = "I-Stufe jetzt erkennen";
-    setQrScanResult("Aktives Labelprofil: " + getOcrProfileName());
-    resetLabelScanAttempts();
-    elements.qrScannerOverlay.classList.remove("hidden");
-    document.body.classList.add("scanner-open");
-    await startQrScannerCamera();
-    setQrScannerStatus("I-Stufen-Aufdruck scharf und formatfüllend ausrichten, dann auf „I-Stufe jetzt erkennen“ tippen.");
+    setQrScannerStatus(
+        `Gesamtes Label ausrichten. Der QR-Code liefert PartNumber, CPID und Hardware; Profil „${getOcrProfileName()}“ liest die I-Stufe. Danach den Foto-Auslöser drücken.`
+    );
 }
 
 function selectRecognizedIStufe(value) {
@@ -2744,36 +2682,6 @@ function selectRecognizedIStufe(value) {
         select.value = option.value;
     }
 }
-
-async function captureIStufeWithOcr() {
-    if (state.labelOcrBusy) return;
-    state.labelOcrBusy = true;
-    elements.captureLabelButton.disabled = true;
-    try {
-        setQrScannerStatus(`I-Stufe wird mit dem Profil „${getOcrProfileName()}“ erkannt …`);
-        const { canvas } = createCapturedLabelCanvas();
-        const result = await TeiletrackingOcrService.recognizeProfileField(
-            canvas,
-            "software",
-            { onProgress: updateLabelOcrServiceProgress }
-        );
-        const iStufe = result && result.value;
-        selectRecognizedIStufe(iStufe);
-        setQrScanResult(
-            `I-Stufe per OCR erkannt: ${normalizeText(iStufe)} · Profil: ${result.profileName}`,
-            "success"
-        );
-        closeQrScanner();
-    }
-    catch (error) {
-        setQrScannerStatus(error.message || "I-Stufe konnte nicht erkannt werden.", "error");
-    }
-    finally {
-        state.labelOcrBusy = false;
-        elements.captureLabelButton.disabled = false;
-    }
-}
-
 
 function showTrackingTransferMessage(message, type) {
     elements.trackingTransferMessage.classList.remove(
@@ -4595,11 +4503,6 @@ elements.openQrScannerButton.addEventListener(
     openQrScanner
 );
 
-elements.openIStufeOcrButton.addEventListener(
-    "click",
-    openIStufeOcrScanner
-);
-
 elements.closeQrScannerButton.addEventListener(
     "click",
     closeQrScanner
@@ -4617,9 +4520,7 @@ elements.retryQrScannerButton.addEventListener(
 
 elements.captureLabelButton.addEventListener(
     "click",
-    () => state.scannerMode === "i-stufe-ocr"
-        ? captureIStufeWithOcr()
-        : captureLabelPhoto()
+    captureLabelPhoto
 );
 
 document.addEventListener(
@@ -4636,11 +4537,8 @@ document.addEventListener(
             return;
         }
 
-        if (state.scannerMode === "i-stufe-ocr") {
-            return;
-        }
-
         try {
+            state.pendingQrText = qrText;
             populateQrFields(qrText);
         }
         catch (error) {
@@ -4648,10 +4546,9 @@ document.addEventListener(
             return;
         }
         setQrScanResult(
-            "QR-/DataMatrix-Code erkannt: PartNumber, CPID und Hardware wurden übernommen.",
+            "QR-/DataMatrix-Code erkannt. Werte eingetragen – jetzt das gemeinsame Label-Foto auslösen.",
             "success"
         );
-        closeQrScanner();
     }
 );
 

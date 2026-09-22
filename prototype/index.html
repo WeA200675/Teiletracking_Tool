@@ -301,15 +301,7 @@
                             class="button button-secondary button-small"
                             type="button"
                         >
-                            QR-Code mit Kamera scannen
-                        </button>
-
-                        <button
-                            id="openIStufeOcrButton"
-                            class="button button-secondary button-small"
-                            type="button"
-                        >
-                            I-Stufe per OCR erfassen
+                            Label mit Kamera erfassen
                         </button>
 
                         <span id="qrScanResult" class="qr-scan-result" aria-live="polite"></span>
@@ -848,11 +840,10 @@
                 <div class="scanner-actions scanner-actions-capture">
                     <button
                         id="captureLabelButton"
-                        class="button button-primary scanner-trigger-button hidden"
+                        class="button button-primary scanner-trigger-button"
                         type="button"
-                        hidden
                     >
-                        Label aufnehmen
+                        Foto aufnehmen &amp; auswerten
                     </button>
 
                     <button
@@ -873,7 +864,8 @@
                 </div>
 
                 <p class="hint">
-                    Richte den QR-/DataMatrix-Code oder den sichtbaren I-Stufen-Aufdruck vollständig im markierten Rahmen aus.
+                    Richte das gesamte Label mit QR-/DataMatrix-Code und I-Stufen-Aufdruck scharf im Rahmen aus.
+                    Tippe anschließend auf „Foto aufnehmen &amp; auswerten“.
                 </p>
             </div>
         </section>
@@ -891,7 +883,7 @@
     <script src="./ocr-service.js?v=privacy-ocr-v2"></script>
     <script src="./migration-service.js"></script>
     <script src="./feature-service.js"></script>
-    <script src="./app.js?v=qr-fields-v1"></script>
+    <script src="./app.js?v=single-label-capture-v1"></script>
 
     <script src="vision-preprocessor.js"></script>
 </body>
