@@ -1555,6 +1555,17 @@
                 "good"
             );
         }
+
+        document.dispatchEvent(
+            new CustomEvent(
+                "teiletracking:qr-detected",
+                {
+                    detail: {
+                        text: qrText
+                    }
+                }
+            )
+        );
     }
 
     async function prepareHighResolutionCapture(
@@ -1890,7 +1901,7 @@
 
         if (title) {
             title.textContent =
-                "QR / DataMatrix & Label scannen";
+                "QR / DataMatrix scannen";
         }
 
         if (captureButton) {
