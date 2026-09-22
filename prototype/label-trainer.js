@@ -147,8 +147,8 @@
             return;
         }
         if (/^\d{2}\.\d{2}\.\d{4}$/.test(qrValues[0] || "") && qrValues.length >= 3) {
-            if (!Number.isInteger(fieldMappings.partNumber)) fieldMappings.partNumber = 1;
-            if (!Number.isInteger(fieldMappings.serialNumber)) fieldMappings.serialNumber = 2;
+            fieldMappings.partNumber = 1;
+            fieldMappings.serialNumber = 2;
             document.querySelector('[data-expected="partNumber"]').value = qrValues[fieldMappings.partNumber] || "";
             document.querySelector('[data-expected="serialNumber"]').value = qrValues[fieldMappings.serialNumber] || "";
         }

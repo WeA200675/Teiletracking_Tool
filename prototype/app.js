@@ -361,6 +361,20 @@ function getQrTokenValues(qrText) {
 
 function parseProfileMappedQrFields(qrText) {
     const values = getQrTokenValues(qrText);
+    const usesConfirmedSchema =
+        /^\d{2}\.\d{2}\.\d{4}$/.test(values[0] || "") &&
+        values.length >= 3;
+
+    // Das bestätigte Schema hat Vorrang vor älteren, lokal gespeicherten
+    // Profilen: Datum_PartNumber_CPID_Status_Index.
+    if (usesConfirmedSchema) {
+        return {
+            partNumber: normalizeText(values[1]),
+            serialNumber: normalizeText(values[2]),
+            hardware: ""
+        };
+    }
+
     const profile = TeiletrackingLabelProfileService &&
         typeof TeiletrackingLabelProfileService.getActiveProfile === "function"
         ? TeiletrackingLabelProfileService.getActiveProfile()
@@ -368,13 +382,6 @@ function parseProfileMappedQrFields(qrText) {
     const mappings = profile && profile.mappings || {};
     let partNumber = values[mappings.partNumber] || "";
     let serialNumber = values[mappings.serialNumber] || "";
-
-    // Bekanntes Labelschema: Datum_PartNumber_CPID_Status_Index.
-    // Das Datum und die beiden letzten technischen Werte werden ignoriert.
-    if ((!partNumber || !serialNumber) && /^\d{2}\.\d{2}\.\d{4}$/.test(values[0] || "")) {
-        partNumber = partNumber || values[1] || "";
-        serialNumber = serialNumber || values[2] || "";
-    }
 
     if (!partNumber || !serialNumber) {
         throw new Error("Das aktive Labelprofil enthält noch keine vollständige QR-Zuordnung für PartNumber und CPID.");
@@ -2569,7 +2576,7 @@ async function captureLabelPhoto() {
                 state.pendingQrText = qrText;
                 registerLabelScanSuccess();
                 setQrScanResult(
-                    "Foto übernommen. PartNumber, CPID und Hardware wurden ausschließlich aus dem QR-Code in die Felder geschrieben.",
+                    "Foto übernommen. PartNumber und CPID wurden aus dem QR-Code in die Felder geschrieben. Hardware folgt separat aus der Label-Beschriftung.",
                     "success"
                 );
             }

@@ -162,5 +162,20 @@ assert.match(
     /split\(\/\[_\|;/,
     "Positionsbasierte QR-Inhalte müssen auch am Unterstrich getrennt werden."
 );
+assert.equal(
+    appSource.includes("partNumber: normalizeText(values[1])"),
+    true,
+    "Im bestätigten QR-Schema muss Index 1 als PartNumber verwendet werden."
+);
+assert.equal(
+    appSource.includes("serialNumber: normalizeText(values[2])"),
+    true,
+    "Im bestätigten QR-Schema muss Index 2 als CPID verwendet werden."
+);
+assert.equal(
+    appSource.includes("PartNumber, CPID und Hardware wurden ausschließlich aus dem QR-Code"),
+    false,
+    "Hardware darf nicht mehr als QR-Wert bestätigt werden."
+);
 
 console.log("OCR privacy and validation tests: PASS");
