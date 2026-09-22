@@ -120,8 +120,7 @@ assert.equal(
 for (const fieldId of [
     "qrPartNumberField",
     "qrCpidField",
-    "qrHardwareField",
-    "captureIStufe"
+    "qrHardwareField"
 ]) {
     assert.equal(
         indexSource.includes(`id="${fieldId}"`),
@@ -130,8 +129,8 @@ for (const fieldId of [
     );
 }
 assert.equal(indexSource.includes('id="openIStufeOcrButton"'), false);
-assert.equal(indexSource.includes("Label mit Kamera erfassen"), true);
-assert.equal(indexSource.includes("Foto aufnehmen &amp; auswerten"), true);
+assert.equal(indexSource.includes("Label fotografieren &amp; QR übernehmen"), true);
+assert.equal(indexSource.includes("Foto aufnehmen &amp; QR übernehmen"), true);
 const captureButtonMarkup = indexSource.match(
     /<button[^>]*id="captureLabelButton"[^>]*>/
 );
@@ -141,11 +140,17 @@ assert.doesNotMatch(
     /\bhidden\b/,
     "Der Foto-Auslöser darf nicht versteckt sein."
 );
-assert.equal(appSource.includes("Promise.allSettled"), true);
+assert.equal(appSource.includes("recognizeProfileField"), false);
+assert.equal(indexSource.includes('id="captureIStufe"'), false);
 assert.match(
     appSource,
-    /recognizeProfileField\(\s*canvas,\s*"software"/,
-    "Die gemeinsame Aufnahme muss die I-Stufe über den Profilbereich erkennen."
+    /createCapturedLabelCanvas\(\);\s*\n\s*closeQrScanner\(\);/,
+    "Die Kamera muss direkt nach der Fotoübernahme geschlossen werden."
+);
+assert.equal(
+    appSource.includes("populateQrFields(qrText)"),
+    true,
+    "Die QR-Werte müssen nach dem Foto in die sichtbaren Felder geschrieben werden."
 );
 
 console.log("OCR privacy and validation tests: PASS");

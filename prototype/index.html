@@ -286,13 +286,6 @@
                             <input id="qrHardwareField" type="text" autocomplete="off"
                                 placeholder="Wird aus dem QR-Code übernommen">
                         </label>
-                        <label class="field">
-                            <span>I-Stufe (OCR vom Label)</span>
-                            <select id="captureIStufe">
-                                <option value="">Bitte wählen</option>
-                            </select>
-                            <small class="hint">Wird per Texterkennung vom sichtbaren Label gelesen und kann anschließend korrigiert werden.</small>
-                        </label>
                     </div>
 
                     <div class="qr-field-actions">
@@ -301,7 +294,7 @@
                             class="button button-secondary button-small"
                             type="button"
                         >
-                            Label mit Kamera erfassen
+                            Label fotografieren &amp; QR übernehmen
                         </button>
 
                         <span id="qrScanResult" class="qr-scan-result" aria-live="polite"></span>
@@ -449,8 +442,9 @@
             </div>
 
             <p class="hint">
-                PartNumber, CPID und Hardware werden aus dem QR-/DataMatrix-Code übernommen.
-                Die I-Stufe wird mit dem aktiven <a href="./label-trainer.html">Labelprofil</a> per OCR vom sichtbaren Label gelesen.
+                Es werden ausschließlich Werte aus dem QR-/DataMatrix-Code übernommen.
+                PartNumber, CPID und Hardware können nach der Aufnahme in den Feldern ergänzt oder korrigiert werden.
+                Die I-Stufe wird weiterhin manuell in der Fahrzeugzuordnung gewählt.
             </p>
         </section>
 
@@ -843,7 +837,7 @@
                         class="button button-primary scanner-trigger-button"
                         type="button"
                     >
-                        Foto aufnehmen &amp; auswerten
+                        Foto aufnehmen &amp; QR übernehmen
                     </button>
 
                     <button
@@ -864,8 +858,8 @@
                 </div>
 
                 <p class="hint">
-                    Richte das gesamte Label mit QR-/DataMatrix-Code und I-Stufen-Aufdruck scharf im Rahmen aus.
-                    Tippe anschließend auf „Foto aufnehmen &amp; auswerten“.
+                    Richte den QR-/DataMatrix-Code mittig und scharf im Rahmen aus.
+                    Tippe anschließend auf „Foto aufnehmen &amp; QR übernehmen“.
                 </p>
             </div>
         </section>
@@ -879,11 +873,11 @@
     <script src="./ocr-validation-service.js?v=privacy-ocr-v1"></script>
     <script src="./ocr-learning-service.js?v=privacy-ocr-v1"></script>
     <script src="./label-profile-service.js?v=1"></script>
-    <script src="./scanner-service.js?v=qr-only-v1"></script>
+    <script src="./scanner-service.js?v=stable-qr-photo-v1"></script>
     <script src="./ocr-service.js?v=privacy-ocr-v2"></script>
     <script src="./migration-service.js"></script>
     <script src="./feature-service.js"></script>
-    <script src="./app.js?v=single-label-capture-v1"></script>
+    <script src="./app.js?v=qr-photo-only-v1"></script>
 
     <script src="vision-preprocessor.js"></script>
 </body>

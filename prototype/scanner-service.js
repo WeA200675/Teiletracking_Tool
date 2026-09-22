@@ -1536,7 +1536,7 @@
 
         if (status) {
             status.textContent =
-                "QR-/DataMatrix-Code erkannt. Jetzt Foto aufnehmen, damit die sichtbare Beschriftung per OCR geprüft wird.";
+                "QR-/DataMatrix-Code erkannt. Jetzt Foto aufnehmen; anschließend werden die QR-Werte übernommen.";
 
             status.classList.remove(
                 "error"
@@ -1588,56 +1588,17 @@
             return;
         }
 
-        if (status) {
-            status.textContent =
-                "Autofokus wird ausgelöst …";
-
-            status.classList.remove(
-                "error"
-            );
-        }
-
         try {
-            try {
-                if (
-                    "ImageCapture" in global
-                ) {
-                    const focusTrigger =
-                        new global.ImageCapture(
-                            activeTrack
-                        );
-
-                    if (
-                        typeof focusTrigger.takePhoto ===
-                        "function"
-                    ) {
-                        // Einige Smartphones fokussieren erst beim Aufruf von
-                        // takePhoto(). Diese erste, zu frühe Aufnahme wird
-                        // absichtlich verworfen und nur als Fokusimpuls genutzt.
-                        await focusTrigger.takePhoto();
-                    }
-                }
-            }
-            catch (error) {
-                console.warn(
-                    "Autofokus konnte nicht erneut angestoßen werden.",
-                    error
-                );
-            }
-
             if (status) {
                 status.textContent =
-                    "Autofokus ausgelöst. Aufnahme in 2 Sekunden.";
+                    "Scharfes Vorschaubild wird unverändert übernommen …";
+                status.classList.remove("error");
             }
 
-            await delay(1000);
-
-            if (status) {
-                status.textContent =
-                    "Fokus stabilisieren … Aufnahme in 1 Sekunde.";
-            }
-
-            await delay(1000);
+            // Kein ImageCapture.takePhoto(): Manche Smartphones wechseln dabei
+            // den Sensor-Crop und verschieben die bereits mittige Vorschau.
+            // Der beste Frame wird stattdessen direkt aus dem stabilen Video gewählt.
+            await delay(120);
 
             if (
                 !stream ||
@@ -1703,7 +1664,7 @@
             }
 
             capture.captureSource =
-                "Videoframe nach Autofokus";
+                "Zentrierter Vorschau-Frame";
 
             if (lastDiagnostics) {
                 lastDiagnostics.captureSource =
@@ -1906,7 +1867,7 @@
 
         if (captureButton) {
             captureButton.textContent =
-                "Foto aufnehmen & prüfen";
+                "Foto aufnehmen & QR übernehmen";
 
             captureButton.addEventListener(
                 "click",
