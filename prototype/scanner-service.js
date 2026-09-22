@@ -1625,28 +1625,34 @@
                     await global.TeiletrackingImageQualityService
                         .captureBestFrame(video);
 
-                if (!bestFrame.accepted) {
-                    const qualityError = new Error(
-                        `Bildqualität nicht ausreichend: ${bestFrame.reasons.join(", ")}`
-                    );
-                    qualityError.code = "IMAGE_QUALITY_REJECTED";
-                    throw qualityError;
+                if (bestFrame.accepted) {
+                    capture = {
+                        canvas: bestFrame.canvas,
+                        context: bestFrame.context,
+                        quality: {
+                            brightness: bestFrame.metrics.brightness,
+                            edgeScore: bestFrame.metrics.sharpness,
+                            glarePercent: bestFrame.metrics.glarePercent,
+                            motion: bestFrame.metrics.motion,
+                            warnings: [],
+                            good: true
+                        },
+                        dataUrl: bestFrame.canvas.toDataURL("image/jpeg", 0.94),
+                        captureSource: `Bester Frame aus ${bestFrame.frameCount}`
+                    };
                 }
-
-                capture = {
-                    canvas: bestFrame.canvas,
-                    context: bestFrame.context,
-                    quality: {
-                        brightness: bestFrame.metrics.brightness,
-                        edgeScore: bestFrame.metrics.sharpness,
-                        glarePercent: bestFrame.metrics.glarePercent,
-                        motion: bestFrame.metrics.motion,
-                        warnings: [],
-                        good: true
-                    },
-                    dataUrl: bestFrame.canvas.toDataURL("image/jpeg", 0.94),
-                    captureSource: `Bester Frame aus ${bestFrame.frameCount}`
-                };
+                else {
+                    // Auch bei einem verwackelten oder dunklen Bild muss der
+                    // Auslösevorgang abgeschlossen werden. Die QR-Auswertung
+                    // entscheidet anschließend selbst, ob ein Code lesbar ist.
+                    capture = captureFrame(video);
+                    capture.quality = {
+                        ...(capture.quality || {}),
+                        warnings: bestFrame.reasons || ["Bildqualität eingeschränkt"],
+                        good: false
+                    };
+                    capture.captureSource = "Fallback-Videoframe";
+                }
 
                 lastDiagnostics = {
                     resolution: `${capture.canvas.width}×${capture.canvas.height}`,
@@ -1682,22 +1688,6 @@
             };
         }
         catch (error) {
-            if (
-                error &&
-                error.code === "IMAGE_QUALITY_REJECTED"
-            ) {
-                pendingHighResolutionCapture = null;
-                button.disabled = false;
-
-                if (status) {
-                    status.textContent =
-                        "Aufnahme abgelehnt: Bitte Handy ruhig halten, Label vollständig ausfüllen und Reflexionen vermeiden.";
-                    status.classList.add("error");
-                }
-
-                return;
-            }
-
             console.warn(
                 "Hochauflösende Aufnahme fehlgeschlagen. Videoframe wird verwendet.",
                 error
