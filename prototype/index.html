@@ -258,9 +258,9 @@
                 </div>
             </div>
 
-            <div class="input-columns">
-                <label class="field">
-                    <span>Label</span>
+            <div class="input-columns qr-only-input">
+                <label class="field hidden" aria-hidden="true">
+                    <span>Interner Kompatibilitätswert</span>
                     <textarea id="labelInput" rows="5" spellcheck="false"
                         placeholder="PN=1234567;SN=SN001;HW=HW1;SW=SW1"></textarea>
                 </label>
@@ -276,7 +276,7 @@
                             class="button button-secondary button-small"
                             type="button"
                         >
-                            Label mit Kamera aufnehmen
+                            QR-Code mit Kamera scannen
                         </button>
 
                         <span id="qrScanResult" class="qr-scan-result" aria-live="polite"></span>
@@ -424,11 +424,10 @@
             </div>
 
             <p class="hint">
-                Unterstützte Schlüssel: PN, SN, HW und SW. PN und SN sind Pflichtfelder.
-                Beim Kamera-Workflow werden QR-Code und sichtbare Beschriftung aus derselben Labelaufnahme ausgewertet.
-                Die OCR-Feldzuordnung verwendet zunächst ein flexibles Test-Mapping für Bezeichnungen wie PN / Part No,
-                SN / Serial, HW / Hardware und SW / Software.
-                <a href="./label-trainer.html">Labelprofil auf dem Smartphone erstellen oder trainieren</a>.
+                Die Teilewerte werden ausschließlich aus dem QR-/DataMatrix-Code übernommen.
+                Unterstützte Schlüssel: PN, SN, HW und SW; PN und SN sind Pflichtfelder.
+                Die <a href="./label-trainer.html">Labelprofil-App</a> bleibt als getrennte OCR-Test- und Trainingsoberfläche verfügbar,
+                beeinflusst aber bewusst nicht die QR-Code-Erfassung.
             </p>
         </section>
 
@@ -460,7 +459,7 @@
 
             <p id="resultMessage" class="result-message"></p>
 
-            <section class="comparison-section">
+            <section class="comparison-section hidden" aria-hidden="true">
                 <div class="comparison-heading">
                     <h3>Label / QR Vergleich</h3>
                     <span id="comparisonSummary" class="comparison-summary">–</span>
@@ -508,7 +507,7 @@
 
             <dl class="result-data">
                 <div><dt>PartNumber</dt><dd id="resultPartNumber">–</dd></div>
-                <div><dt>SerialNumber</dt><dd id="resultSerialNumber">–</dd></div>
+                <div><dt>CPID</dt><dd id="resultSerialNumber">–</dd></div>
                 <div><dt>Derivat</dt><dd id="resultDerivat">–</dd></div>
                 <div><dt>I-Stufe</dt><dd id="resultIStufe">–</dd></div>
                 <div><dt>ATS</dt><dd id="resultAts">–</dd></div>
@@ -818,8 +817,9 @@
                 <div class="scanner-actions scanner-actions-capture">
                     <button
                         id="captureLabelButton"
-                        class="button button-primary scanner-trigger-button"
+                        class="button button-primary scanner-trigger-button hidden"
                         type="button"
+                        hidden
                     >
                         Label aufnehmen
                     </button>
@@ -842,10 +842,8 @@
                 </div>
 
                 <p class="hint">
-                    Fülle den markierten Rahmen möglichst vollständig mit dem Label, halte das Handy parallel zum Label und vermeide Spiegelungen.
-                    Nach dem Auslösen prüft das Tool Bildschärfe und Helligkeit, versucht den QR-Code in mehreren Bildvarianten und Teilbereichen
-                    und startet danach die OCR. Wenn ein QR-Code technisch erkannt wird, aber das Datenformat unbekannt ist, wird das jetzt getrennt angezeigt.
-                    Ist die Aufnahme nicht vollständig lesbar, erscheint „Bitte erneut scannen“. Nach dem fünften erfolglosen Versuch wird „Manuell hinzufügen“ angeboten.
+                    Richte den QR-/DataMatrix-Code vollständig im markierten Rahmen aus.
+                    Sobald der Code erkannt wurde, werden seine Werte übernommen und die Kamera automatisch geschlossen.
                 </p>
             </div>
         </section>
@@ -859,13 +857,12 @@
     <script src="./ocr-validation-service.js?v=privacy-ocr-v1"></script>
     <script src="./ocr-learning-service.js?v=privacy-ocr-v1"></script>
     <script src="./label-profile-service.js?v=1"></script>
-    <script src="./scanner-service.js?v=privacy-ocr-v1"></script>
+    <script src="./scanner-service.js?v=qr-only-v1"></script>
     <script src="./ocr-service.js?v=privacy-ocr-v2"></script>
     <script src="./migration-service.js"></script>
     <script src="./feature-service.js"></script>
-    <script src="./app.js"></script>
+    <script src="./app.js?v=qr-only-v1"></script>
 
     <script src="vision-preprocessor.js"></script>
-    <script src="two-stage-label-workflow.js"></script>
 </body>
 </html>
