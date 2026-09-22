@@ -143,6 +143,10 @@ h3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.input-columns.qr-only-input {
+    grid-template-columns: 1fr;
+}
+
 .tracking-filter-grid {
     grid-template-columns: minmax(250px, 1.5fr) repeat(3, minmax(150px, 1fr));
 }
