@@ -98,4 +98,24 @@ assert.equal(
     "Kamerabilder dürfen im App-Ablauf nicht dauerhaft gespeichert werden."
 );
 
+const indexSource = fs.readFileSync(
+    path.join(__dirname, "../prototype/index.html"),
+    "utf8"
+);
+assert.equal(
+    indexSource.includes("two-stage-label-workflow.js"),
+    false,
+    "Der zweite Kamera-/OCR-Scanweg muss deaktiviert bleiben."
+);
+assert.equal(
+    indexSource.includes("qr-only-input"),
+    true,
+    "Die operative Erfassung muss als QR-only gekennzeichnet sein."
+);
+assert.equal(
+    appSource.includes("teiletracking:qr-detected"),
+    true,
+    "Erkannte QR-Werte müssen direkt in die Erfassung übernommen werden."
+);
+
 console.log("OCR privacy and validation tests: PASS");
