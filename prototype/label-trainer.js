@@ -5,7 +5,6 @@
     const context = canvas.getContext("2d");
     const image = new Image();
     const regions = {};
-    const ocrObservations = {};
     let selectedField = "partNumber";
     let dragStart = null;
     let draftRegion = null;
@@ -116,7 +115,7 @@
                 contrast: document.getElementById("contrastOption").checked,
                 threshold: document.getElementById("thresholdOption").checked
             },
-            insights: buildInsights()
+            insights: []
         };
     }
 
@@ -124,30 +123,58 @@
         return document.querySelector(`[data-expected="${field}"]`).value.trim().toUpperCase();
     }
 
-    function buildInsights() {
-        const insights = [];
-        for (const field of Object.keys(regions)) {
-            const observed = ocrObservations[field] || "";
-            const expected = expectedValue(field);
-            if (observed && expected && observed !== expected) {
-                insights.push(TeiletrackingOcrLearningService.createInsight({
-                    field: fieldLabels[field], observed, expected, profile: "mobile-profile-training"
-                }));
-            }
+    function renderQrCandidates(qrText) {
+        const target = document.getElementById("qrCandidates");
+        target.innerHTML = "";
+        const values = String(qrText || "")
+            .split(/[|;,\n\r\t]+/)
+            .map(value => value.trim())
+            .filter(Boolean)
+            .map(value => value.includes("=") ? value.slice(value.indexOf("=") + 1).trim() : value);
+        const unique = [...new Set(values)];
+        if (!unique.length) return;
+        const help = document.createElement("p");
+        help.textContent = "Feld oben auswählen und dann den passenden QR-Wert antippen:";
+        target.appendChild(help);
+        for (const value of unique) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = value;
+            button.addEventListener("click", () => {
+                const input = document.querySelector(`[data-expected="${selectedField}"]`);
+                if (input) input.value = value;
+                setStatus(`${value} wurde ${fieldLabels[selectedField]} zugeordnet.`);
+            });
+            target.appendChild(button);
         }
-        return insights;
     }
 
-    function decodeQr() {
+    async function decodeQr() {
         const output = document.getElementById("qrOutput");
-        if (!global.jsQR || !canvas.width || !canvas.height) {
+        if (!canvas.width || !canvas.height || !global.TeiletrackingScannerService) {
             output.value = "QR-Decoder nicht verfügbar.";
             return;
         }
-        const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-        const code = global.jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: "attemptBoth" });
-        output.value = code ? code.data : "Kein QR-/DataMatrix-Code erkannt. Bitte den QR-Code formatfüllend fotografieren.";
-        setStatus(code ? "QR-Code gelesen. Jetzt Feldbereiche markieren und die Werte zuordnen." : "Kein QR-Code erkannt.", !code);
+        output.value = "QR-/DataMatrix-Code wird ausgelesen …";
+        setStatus("Code wird mit mehreren Bildausschnitten und Drehungen geprüft.");
+        try {
+            const text = await global.TeiletrackingScannerService.detectQr(
+                canvas,
+                context,
+                { ignoreLiveCache: true }
+            );
+            output.value = text || "Kein QR-/DataMatrix-Code erkannt. Bitte den Code größer und scharf fotografieren.";
+            renderQrCandidates(text);
+            document.getElementById("ocrResults").textContent = text
+                ? "QR-Werte erkannt. Feld auswählen und den passenden Wert oben antippen."
+                : "Noch keine Werte erkannt.";
+            setStatus(text ? "Code gelesen. Werte können jetzt zugeordnet werden." : "Kein Code erkannt.", !text);
+        }
+        catch (error) {
+            output.value = "QR-Auswertung fehlgeschlagen.";
+            renderQrCandidates("");
+            setStatus(error.message || "QR-Auswertung fehlgeschlagen.", true);
+        }
     }
 
     function renderSavedProfiles() {

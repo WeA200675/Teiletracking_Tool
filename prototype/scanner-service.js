@@ -1142,6 +1142,13 @@
         context,
         options = {}
     ) {
+        if (
+            engineMode === "UNINITIALIZED" ||
+            engineMode === "UNAVAILABLE"
+        ) {
+            await initializeQrEngine();
+        }
+
         if (!lastDiagnostics) {
             lastDiagnostics = {
                 resolution:

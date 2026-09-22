@@ -21,6 +21,7 @@
             </label>
             <p class="privacy">Es wird ausschließlich der QR-/DataMatrix-Code ausgewertet. Bild und Werte bleiben flüchtig in diesem Browser-Tab.</p>
             <label>QR-Ausgabe<textarea id="qrOutput" rows="4" readonly placeholder="Nach der Aufnahme wird der QR-Inhalt hier angezeigt."></textarea></label>
+            <div id="qrCandidates" class="qr-candidates" aria-live="polite"></div>
         </section>
 
         <section class="panel">
@@ -64,7 +65,8 @@
         </section>
     </main>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <script src="./scanner-service.js?v=label-tool-qr-v1"></script>
     <script src="./label-profile-service.js?v=1"></script>
-    <script src="./label-trainer.js?v=2"></script>
+    <script src="./label-trainer.js?v=4"></script>
 </body>
 </html>
