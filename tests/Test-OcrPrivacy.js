@@ -110,7 +110,7 @@ assert.equal(
 assert.equal(
     indexSource.includes("qr-only-input"),
     true,
-    "Die operative Erfassung muss als QR-only gekennzeichnet sein."
+    "Die operative Erfassung muss die QR-Feldgruppe enthalten."
 );
 assert.equal(
     appSource.includes("teiletracking:qr-detected"),
@@ -129,8 +129,23 @@ for (const fieldId of [
         `Das Erfassungsfeld ${fieldId} muss vorhanden sein.`
     );
 }
-assert.equal(indexSource.includes('id="openIStufeOcrButton"'), true);
-assert.equal(appSource.includes("captureIStufeWithOcr"), true);
-assert.equal(appSource.includes('recognizeProfileField(\n            canvas,\n            "software"'), true);
+assert.equal(indexSource.includes('id="openIStufeOcrButton"'), false);
+assert.equal(indexSource.includes("Label mit Kamera erfassen"), true);
+assert.equal(indexSource.includes("Foto aufnehmen &amp; auswerten"), true);
+const captureButtonMarkup = indexSource.match(
+    /<button[^>]*id="captureLabelButton"[^>]*>/
+);
+assert.ok(captureButtonMarkup, "Der Foto-Auslöser muss vorhanden sein.");
+assert.doesNotMatch(
+    captureButtonMarkup[0],
+    /\bhidden\b/,
+    "Der Foto-Auslöser darf nicht versteckt sein."
+);
+assert.equal(appSource.includes("Promise.allSettled"), true);
+assert.match(
+    appSource,
+    /recognizeProfileField\(\s*canvas,\s*"software"/,
+    "Die gemeinsame Aufnahme muss die I-Stufe über den Profilbereich erkennen."
+);
 
 console.log("OCR privacy and validation tests: PASS");
