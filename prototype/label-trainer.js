@@ -9,15 +9,14 @@
     let selectedField = "partNumber";
     let dragStart = null;
     let draftRegion = null;
-    let worker = null;
 
     const fieldLabels = {
         partNumber: "PartNumber", serialNumber: "CPID",
-        hardware: "Hardware", software: "I-Stufe"
+        hardware: "Hardware"
     };
     const colors = {
         partNumber: "#28b8ff", serialNumber: "#ffb52e",
-        hardware: "#63d471", software: "#d58cff"
+        hardware: "#63d471"
     };
 
     function setStatus(message, error = false) {
@@ -99,6 +98,7 @@
             canvas.width = Math.round(image.naturalWidth * scale);
             canvas.height = Math.round(image.naturalHeight * scale);
             draw();
+            decodeQr();
             URL.revokeObjectURL(url);
         };
         image.src = url;
@@ -138,49 +138,17 @@
         return insights;
     }
 
-    async function getWorker() {
-        if (!worker) {
-            worker = await Tesseract.createWorker("eng", 1);
-            await worker.setParameters({
-                tessedit_pageseg_mode: Tesseract.PSM && Tesseract.PSM.SINGLE_LINE !== undefined ? Tesseract.PSM.SINGLE_LINE : "7",
-                tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._/"
-            });
+    function decodeQr() {
+        const output = document.getElementById("qrOutput");
+        if (!global.jsQR || !canvas.width || !canvas.height) {
+            output.value = "QR-Decoder nicht verfügbar.";
+            return;
         }
-        return worker;
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+        const code = global.jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: "attemptBoth" });
+        output.value = code ? code.data : "Kein QR-/DataMatrix-Code erkannt. Bitte den QR-Code formatfüllend fotografieren.";
+        setStatus(code ? "QR-Code gelesen. Jetzt Feldbereiche markieren und die Werte zuordnen." : "Kein QR-Code erkannt.", !code);
     }
-
-    function cleanRecognition(text) {
-        return String(text || "").toUpperCase().match(/[A-Z0-9][A-Z0-9._/-]*/g)?.sort((a, b) => b.length - a.length)[0] || "";
-    }
-
-    document.getElementById("runOcrButton").addEventListener("click", async () => {
-        if (!image.naturalWidth || Object.keys(regions).length === 0) {
-            setStatus("Bitte zuerst Foto und Feldbereiche festlegen.", true); return;
-        }
-        const results = document.getElementById("ocrResults");
-        results.textContent = "OCR wird geladen und ausgeführt …";
-        try {
-            const activeWorker = await getWorker();
-            results.innerHTML = "";
-            for (const [field, region] of Object.entries(regions)) {
-                const crop = TeiletrackingLabelProfileService.cropRegion(canvas, region);
-                const result = await activeWorker.recognize(crop);
-                const recognized = cleanRecognition(result.data.text);
-                ocrObservations[field] = recognized;
-                const expected = expectedValue(field);
-                const row = document.createElement("div");
-                row.className = `result ${expected && recognized === expected ? "ok" : expected ? "bad" : ""}`;
-                const title = document.createElement("strong");
-                title.textContent = fieldLabels[field];
-                const value = document.createElement("span");
-                value.textContent = `Erkannt: ${recognized || "–"}${expected ? ` · Soll: ${expected}` : ""}`;
-                row.append(title, value);
-                results.appendChild(row);
-            }
-            setStatus("OCR-Test abgeschlossen. Sollwerte bleiben ausschließlich in dieser Sitzung.");
-        }
-        catch (error) { setStatus(error.message || "OCR-Test fehlgeschlagen.", true); }
-    });
 
     function renderSavedProfiles() {
         const target = document.getElementById("savedProfiles");
@@ -230,6 +198,5 @@
         catch (error) { setStatus(error.message, true); }
     });
 
-    global.addEventListener("beforeunload", () => { if (worker) worker.terminate(); });
     renderSavedProfiles();
 })(window);

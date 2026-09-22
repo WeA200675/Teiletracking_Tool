@@ -14,12 +14,13 @@
         </header>
 
         <section class="panel">
-            <h2>1 · Profil und Aufnahme</h2>
+            <h2>1 · Profil und QR-Aufnahme</h2>
             <label>Profilname<input id="profileName" type="text" maxlength="80" placeholder="z. B. Steuergerät Typ A"></label>
-            <label class="file-button">Label fotografieren oder auswählen
+            <label class="file-button">QR-Code fotografieren oder auswählen
                 <input id="labelImageInput" type="file" accept="image/*" capture="environment">
             </label>
-            <p class="privacy">Das Bild und alle Sollwerte bleiben flüchtig in diesem Browser-Tab und werden nicht gespeichert oder exportiert.</p>
+            <p class="privacy">Es wird ausschließlich der QR-/DataMatrix-Code ausgewertet. Bild und Werte bleiben flüchtig in diesem Browser-Tab.</p>
+            <label>QR-Ausgabe<textarea id="qrOutput" rows="4" readonly placeholder="Nach der Aufnahme wird der QR-Inhalt hier angezeigt."></textarea></label>
         </section>
 
         <section class="panel">
@@ -28,7 +29,6 @@
                 <button type="button" data-field="partNumber" class="selected">PartNumber</button>
                 <button type="button" data-field="serialNumber">CPID</button>
                 <button type="button" data-field="hardware">Hardware</button>
-                <button type="button" data-field="software">I-Stufe</button>
             </div>
             <p class="help">Feld wählen und anschließend einen Rahmen direkt über dem Wert aufziehen. Ein neuer Rahmen ersetzt den bisherigen Bereich dieses Feldes.</p>
             <div class="canvas-shell"><canvas id="labelCanvas"></canvas></div>
@@ -36,16 +36,14 @@
         </section>
 
         <section class="panel">
-            <h2>3 · Sollwerte und OCR-Test</h2>
-            <p class="privacy">Sollwerte dienen nur zum lokalen Test und werden beim Speichern oder Exportieren verworfen.</p>
+            <h2>3 · QR-Werte den Feldern zuordnen</h2>
+            <p class="privacy">Übertrage die im QR-Ausgabefeld sichtbaren Werte in das passende Feld. Diese Beispielwerte werden nicht exportiert.</p>
             <div class="expected-grid">
                 <label>PartNumber<input data-expected="partNumber" autocomplete="off"></label>
                 <label>CPID<input data-expected="serialNumber" autocomplete="off"></label>
                 <label>Hardware<input data-expected="hardware" autocomplete="off"></label>
-                <label>I-Stufe<input data-expected="software" autocomplete="off"></label>
             </div>
-            <button id="runOcrButton" type="button" class="primary">Markierte Felder erkennen</button>
-            <div id="ocrResults" class="results" aria-live="polite"></div>
+            <div id="ocrResults" class="results" aria-live="polite">Nach der QR-Aufnahme hier die Zuordnung prüfen.</div>
         </section>
 
         <section class="panel">
@@ -65,8 +63,7 @@
             <div id="savedProfiles"></div>
         </section>
     </main>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"></script>
-    <script src="./ocr-learning-service.js?v=privacy-ocr-v1"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
     <script src="./label-profile-service.js?v=1"></script>
     <script src="./label-trainer.js?v=2"></script>
 </body>

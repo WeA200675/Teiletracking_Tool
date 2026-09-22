@@ -4,7 +4,7 @@
     const STORAGE_KEY = "teiletracking.labelProfiles.v1";
     const ACTIVE_KEY = "teiletracking.activeLabelProfile.v1";
     const FIELD_TYPES = Object.freeze([
-        "partNumber", "serialNumber", "hardware", "software"
+        "partNumber", "serialNumber", "hardware"
     ]);
 
     function normalizeRegion(region = {}) {
