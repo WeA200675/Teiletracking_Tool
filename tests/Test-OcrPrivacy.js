@@ -152,5 +152,15 @@ assert.equal(
     true,
     "Die QR-Werte müssen nach dem Foto in die sichtbaren Felder geschrieben werden."
 );
+assert.equal(
+    appSource.includes("parseProfileMappedQrFields"),
+    true,
+    "Die Tracking-App muss die QR-Zuordnung des aktiven Labelprofils verwenden."
+);
+assert.match(
+    appSource,
+    /split\(\/\[_\|;/,
+    "Positionsbasierte QR-Inhalte müssen auch am Unterstrich getrennt werden."
+);
 
 console.log("OCR privacy and validation tests: PASS");

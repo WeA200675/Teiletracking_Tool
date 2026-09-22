@@ -28,16 +28,15 @@
             <div class="field-picker" role="group" aria-label="Zu markierendes Feld">
                 <button type="button" data-field="partNumber" class="selected">PartNumber</button>
                 <button type="button" data-field="serialNumber">CPID</button>
-                <button type="button" data-field="hardware">Hardware</button>
             </div>
-            <p class="help">Feld wählen und anschließend den passenden erkannten QR-Wert antippen. Das Kamerabild wird nach dem Auslesen nicht mehr angezeigt.</p>
+            <p class="help">PartNumber oder CPID wählen und anschließend den passenden QR-Wert antippen. Hardware stammt nicht aus dem QR-Code und wird später aus den Beschriftungszeilen 5 und 6 gelesen.</p>
             <div id="qrCandidates" class="qr-candidates" aria-live="polite">Bitte zuerst einen QR-/DataMatrix-Code aufnehmen.</div>
             <canvas id="labelCanvas" hidden aria-hidden="true"></canvas>
         </section>
 
         <section class="panel">
-            <h2>3 · QR-Werte den Feldern zuordnen</h2>
-            <p class="privacy">Übertrage die im QR-Ausgabefeld sichtbaren Werte in das passende Feld. Diese Beispielwerte werden nicht exportiert.</p>
+            <h2>3 · Erkannte Werte kontrollieren</h2>
+            <p class="privacy">PartNumber und CPID stammen aus dem QR-Code. Hardware wird aus den direkt zusammengefügten OCR-Zeilen 5 und 6 ergänzt. Beispielwerte werden nicht exportiert.</p>
             <div class="expected-grid">
                 <label>PartNumber<input data-expected="partNumber" autocomplete="off"></label>
                 <label>CPID<input data-expected="serialNumber" autocomplete="off"></label>
@@ -66,6 +65,6 @@
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
     <script src="./scanner-service.js?v=label-tool-qr-v1"></script>
     <script src="./label-profile-service.js?v=qr-mapping-v1"></script>
-    <script src="./label-trainer.js?v=5"></script>
+    <script src="./label-trainer.js?v=6"></script>
 </body>
 </html>

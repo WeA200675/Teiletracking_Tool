@@ -136,7 +136,7 @@
         target.innerHTML = "";
         if (typeof qrText === "string") {
             const values = qrText
-                .split(/[|;,\n\r\t]+/)
+                .split(/[_|;,\n\r\t]+/)
                 .map(value => value.trim())
                 .filter(Boolean)
                 .map(value => value.includes("=") ? value.slice(value.indexOf("=") + 1).trim() : value);
@@ -145,6 +145,12 @@
         if (!qrValues.length) {
             target.textContent = "Bitte zuerst einen QR-/DataMatrix-Code aufnehmen.";
             return;
+        }
+        if (/^\d{2}\.\d{2}\.\d{4}$/.test(qrValues[0] || "") && qrValues.length >= 3) {
+            if (!Number.isInteger(fieldMappings.partNumber)) fieldMappings.partNumber = 1;
+            if (!Number.isInteger(fieldMappings.serialNumber)) fieldMappings.serialNumber = 2;
+            document.querySelector('[data-expected="partNumber"]').value = qrValues[fieldMappings.partNumber] || "";
+            document.querySelector('[data-expected="serialNumber"]').value = qrValues[fieldMappings.serialNumber] || "";
         }
         const help = document.createElement("p");
         help.textContent = `Ausgewählt: ${fieldLabels[selectedField]}. Passenden Wert antippen:`;

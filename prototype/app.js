@@ -349,12 +349,58 @@ function syncQrTextFromFields() {
     elements.labelInput.value = qrText;
 }
 
+function getQrTokenValues(qrText) {
+    return String(qrText || "")
+        .split(/[_|;,\n\r\t]+/)
+        .map(value => value.trim())
+        .filter(Boolean)
+        .map(value => value.includes("=")
+            ? value.slice(value.indexOf("=") + 1).trim()
+            : value);
+}
+
+function parseProfileMappedQrFields(qrText) {
+    const values = getQrTokenValues(qrText);
+    const profile = TeiletrackingLabelProfileService &&
+        typeof TeiletrackingLabelProfileService.getActiveProfile === "function"
+        ? TeiletrackingLabelProfileService.getActiveProfile()
+        : null;
+    const mappings = profile && profile.mappings || {};
+    let partNumber = values[mappings.partNumber] || "";
+    let serialNumber = values[mappings.serialNumber] || "";
+
+    // Bekanntes Labelschema: Datum_PartNumber_CPID_Status_Index.
+    // Das Datum und die beiden letzten technischen Werte werden ignoriert.
+    if ((!partNumber || !serialNumber) && /^\d{2}\.\d{2}\.\d{4}$/.test(values[0] || "")) {
+        partNumber = partNumber || values[1] || "";
+        serialNumber = serialNumber || values[2] || "";
+    }
+
+    if (!partNumber || !serialNumber) {
+        throw new Error("Das aktive Labelprofil enthält noch keine vollständige QR-Zuordnung für PartNumber und CPID.");
+    }
+
+    return {
+        partNumber: normalizeText(partNumber),
+        serialNumber: normalizeText(serialNumber),
+        hardware: ""
+    };
+}
+
 function populateQrFields(qrText) {
-    const parsed = parseTrackingString(qrText, { allowUnknown: true });
+    let parsed;
+    try {
+        parsed = parseTrackingString(qrText, { allowUnknown: true });
+    }
+    catch {
+        parsed = parseProfileMappedQrFields(qrText);
+    }
 
     elements.qrPartNumberField.value = parsed.partNumber;
     elements.qrCpidField.value = parsed.serialNumber;
-    elements.qrHardwareField.value = parsed.hardware;
+    if (parsed.hardware) {
+        elements.qrHardwareField.value = parsed.hardware;
+    }
     syncQrTextFromFields();
 }
 
