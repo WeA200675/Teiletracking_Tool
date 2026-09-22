@@ -196,5 +196,15 @@ assert.equal(
     appSource.includes("Hardware wurde ausschließlich per OCR"),
     true
 );
+assert.equal(
+    appSource.includes('createDetailField("Hardware", labelHardware || qrHardware)'),
+    true,
+    "Hardware muss in der Detailansicht unter Zuordnung erscheinen."
+);
+assert.equal(
+    appSource.includes('createTrackingDetail("Hardware", record.LabelHardware || record.QRHardware)'),
+    true,
+    "Hardware muss in der Teileliste sichtbar sein."
+);
 
 console.log("OCR privacy and validation tests: PASS");

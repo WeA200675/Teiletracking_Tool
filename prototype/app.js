@@ -3685,6 +3685,7 @@ function openTrackingDetail(record) {
     assignmentGrid.append(
         createDetailField("PartNumber", partNumber),
         createDetailField("CPID", serialNumber),
+        createDetailField("Hardware", labelHardware || qrHardware),
         createDetailField("Derivat", record.Derivat),
         createDetailField("I-Stufe", record.IStufe),
         createDetailField("ATS", record.ATS),
@@ -3912,6 +3913,7 @@ function createTrackingItem(record) {
     details.append(
         createTrackingDetail("PartNumber", record.PartNumber),
         createTrackingDetail("SerialNumber", record.SerialNumber),
+        createTrackingDetail("Hardware", record.LabelHardware || record.QRHardware),
         createTrackingDetail("Derivat", record.Derivat),
         createTrackingDetail("I-Stufe", record.IStufe),
         createTrackingDetail("ATS", record.ATS),
