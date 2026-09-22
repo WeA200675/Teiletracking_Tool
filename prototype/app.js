@@ -8,6 +8,7 @@ const state = {
     savedItems: [],
     currentRecord: null,
     qrScannerRunning: false,
+    scannerMode: "qr",
     capturedLabelImageDataUrl: null,
     capturedLabelCapturedAt: null,
     labelOcrBusy: false,
@@ -36,6 +37,10 @@ const elements = {
     iStufenList: document.getElementById("iStufenList"),
     labelInput: document.getElementById("labelInput"),
     qrInput: document.getElementById("qrInput"),
+    qrPartNumberField: document.getElementById("qrPartNumberField"),
+    qrCpidField: document.getElementById("qrCpidField"),
+    qrHardwareField: document.getElementById("qrHardwareField"),
+    captureIStufe: document.getElementById("captureIStufe"),
     checkButton: document.getElementById("checkButton"),
     saveButton: document.getElementById("saveButton"),
     resetButton: document.getElementById("resetButton"),
@@ -94,6 +99,7 @@ const elements = {
     trackingImportFile: document.getElementById("trackingImportFile"),
     trackingTransferMessage: document.getElementById("trackingTransferMessage"),
     openQrScannerButton: document.getElementById("openQrScannerButton"),
+    openIStufeOcrButton: document.getElementById("openIStufeOcrButton"),
     qrScanResult: document.getElementById("qrScanResult"),
     qrScannerOverlay: document.getElementById("qrScannerOverlay"),
     qrScannerVideo: document.getElementById("qrScannerVideo"),
@@ -328,6 +334,30 @@ function getDeviceKey(partNumber, serialNumber) {
         normalizeText(partNumber),
         normalizeText(serialNumber)
     ].join("|");
+}
+
+function syncQrTextFromFields() {
+    const values = [
+        ["PN", elements.qrPartNumberField.value],
+        ["SN", elements.qrCpidField.value],
+        ["HW", elements.qrHardwareField.value]
+    ];
+    const qrText = values
+        .filter(([, value]) => normalizeText(value))
+        .map(([key, value]) => `${key}=${normalizeText(value)}`)
+        .join(";");
+
+    elements.qrInput.value = qrText;
+    elements.labelInput.value = qrText;
+}
+
+function populateQrFields(qrText) {
+    const parsed = parseTrackingString(qrText, { allowUnknown: true });
+
+    elements.qrPartNumberField.value = parsed.partNumber;
+    elements.qrCpidField.value = parsed.serialNumber;
+    elements.qrHardwareField.value = parsed.hardware;
+    syncQrTextFromFields();
 }
 
 function getAssignmentKey(
@@ -1336,6 +1366,13 @@ function refreshMasterDataUi(
 
     fillSelect(
         elements.iStufe,
+        state.masterData.IStufen || [],
+        "IStufeCode",
+        currentIStufe
+    );
+
+    fillSelect(
+        elements.captureIStufe,
         state.masterData.IStufen || [],
         "IStufeCode",
         currentIStufe
@@ -2659,6 +2696,9 @@ async function startQrScannerCamera() {
 
 
 async function openQrScanner() {
+    state.scannerMode = "qr";
+    elements.captureLabelButton.hidden = true;
+    elements.captureLabelButton.classList.add("hidden");
     setQrScanResult("");
     resetLabelScanAttempts();
 
@@ -2671,6 +2711,67 @@ async function openQrScanner() {
     );
 
     await startQrScannerCamera();
+}
+
+async function openIStufeOcrScanner() {
+    state.scannerMode = "i-stufe-ocr";
+    elements.captureLabelButton.hidden = false;
+    elements.captureLabelButton.classList.remove("hidden");
+    elements.captureLabelButton.textContent = "I-Stufe jetzt erkennen";
+    setQrScanResult("Aktives Labelprofil: " + getOcrProfileName());
+    resetLabelScanAttempts();
+    elements.qrScannerOverlay.classList.remove("hidden");
+    document.body.classList.add("scanner-open");
+    await startQrScannerCamera();
+    setQrScannerStatus("I-Stufen-Aufdruck scharf und formatfüllend ausrichten, dann auf „I-Stufe jetzt erkennen“ tippen.");
+}
+
+function selectRecognizedIStufe(value) {
+    const normalized = normalizeText(value);
+    if (!normalized) {
+        throw new Error("Die OCR konnte keine I-Stufe erkennen. Bitte Aufnahme wiederholen.");
+    }
+
+    for (const select of [elements.captureIStufe, elements.iStufe]) {
+        let option = Array.from(select.options)
+            .find(item => normalizeText(item.value) === normalized);
+        if (!option) {
+            option = document.createElement("option");
+            option.value = normalized;
+            option.textContent = `${normalized} (OCR)`;
+            select.appendChild(option);
+        }
+        select.value = option.value;
+    }
+}
+
+async function captureIStufeWithOcr() {
+    if (state.labelOcrBusy) return;
+    state.labelOcrBusy = true;
+    elements.captureLabelButton.disabled = true;
+    try {
+        setQrScannerStatus(`I-Stufe wird mit dem Profil „${getOcrProfileName()}“ erkannt …`);
+        const { canvas } = createCapturedLabelCanvas();
+        const result = await TeiletrackingOcrService.recognizeProfileField(
+            canvas,
+            "software",
+            { onProgress: updateLabelOcrServiceProgress }
+        );
+        const iStufe = result && result.value;
+        selectRecognizedIStufe(iStufe);
+        setQrScanResult(
+            `I-Stufe per OCR erkannt: ${normalizeText(iStufe)} · Profil: ${result.profileName}`,
+            "success"
+        );
+        closeQrScanner();
+    }
+    catch (error) {
+        setQrScannerStatus(error.message || "I-Stufe konnte nicht erkannt werden.", "error");
+    }
+    finally {
+        state.labelOcrBusy = false;
+        elements.captureLabelButton.disabled = false;
+    }
 }
 
 
@@ -4230,8 +4331,12 @@ async function saveCurrentRecord() {
 function resetForm() {
     elements.derivat.value = "";
     elements.iStufe.value = "";
+    elements.captureIStufe.value = "";
     elements.labelInput.value = "";
     elements.qrInput.value = "";
+    elements.qrPartNumberField.value = "";
+    elements.qrCpidField.value = "";
+    elements.qrHardwareField.value = "";
 
     TeiletrackingFeatureService
         .resetAssignmentFields();
@@ -4490,6 +4595,11 @@ elements.openQrScannerButton.addEventListener(
     openQrScanner
 );
 
+elements.openIStufeOcrButton.addEventListener(
+    "click",
+    openIStufeOcrScanner
+);
+
 elements.closeQrScannerButton.addEventListener(
     "click",
     closeQrScanner
@@ -4507,7 +4617,9 @@ elements.retryQrScannerButton.addEventListener(
 
 elements.captureLabelButton.addEventListener(
     "click",
-    captureLabelPhoto
+    () => state.scannerMode === "i-stufe-ocr"
+        ? captureIStufeWithOcr()
+        : captureLabelPhoto()
 );
 
 document.addEventListener(
@@ -4524,13 +4636,19 @@ document.addEventListener(
             return;
         }
 
-        elements.qrInput.value = qrText;
-        elements.labelInput.value = qrText;
-        elements.qrInput.dispatchEvent(
-            new Event("input", { bubbles: true })
-        );
+        if (state.scannerMode === "i-stufe-ocr") {
+            return;
+        }
+
+        try {
+            populateQrFields(qrText);
+        }
+        catch (error) {
+            setQrScanResult(error.message, "error");
+            return;
+        }
         setQrScanResult(
-            "QR-/DataMatrix-Code erkannt und übernommen.",
+            "QR-/DataMatrix-Code erkannt: PartNumber, CPID und Hardware wurden übernommen.",
             "success"
         );
         closeQrScanner();
@@ -4624,6 +4742,22 @@ elements.qrInput.addEventListener(
         }
     }
 );
+
+for (const qrField of [
+    elements.qrPartNumberField,
+    elements.qrCpidField,
+    elements.qrHardwareField
+]) {
+    qrField.addEventListener("input", syncQrTextFromFields);
+}
+
+elements.captureIStufe.addEventListener("change", () => {
+    elements.iStufe.value = elements.captureIStufe.value;
+});
+
+elements.iStufe.addEventListener("change", () => {
+    elements.captureIStufe.value = elements.iStufe.value;
+});
 
 window.addEventListener(
     "beforeunload",

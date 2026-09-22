@@ -1412,6 +1412,60 @@
         return bestCandidate;
     }
 
+    async function recognizeProfileField(
+        sourceCanvas,
+        fieldName,
+        options = {}
+    ) {
+        const profileService = global.TeiletrackingLabelProfileService;
+        const activeProfile = profileService &&
+            typeof profileService.getActiveProfile === "function"
+                ? profileService.getActiveProfile()
+                : null;
+        const region = activeProfile && activeProfile.regions
+            ? activeProfile.regions[fieldName]
+            : null;
+
+        if (!activeProfile || !region) {
+            throw new Error("Das aktive Labelprofil enthält keinen Bereich für die I-Stufe. Bitte diesen zuerst in der Labelprofil-App markieren.");
+        }
+
+        progressCallback = typeof options.onProgress === "function"
+            ? options.onProgress
+            : null;
+        passLabel = `Profil ${activeProfile.name}: ${fieldName}`;
+
+        try {
+            const activeWorker = await getWorker();
+            const crop = profileService.cropRegion(sourceCanvas, region);
+            const result = await activeWorker.recognize(crop, { rotateAuto: false });
+            const rawText = result && result.data
+                ? String(result.data.text || "")
+                : "";
+            const candidates = rawText.toUpperCase()
+                .match(/[A-Z0-9][A-Z0-9._/\-]*/g) || [];
+            candidates.sort((left, right) => right.length - left.length);
+            const value = cleanFieldValue(candidates[0] || "");
+
+            if (!value) {
+                throw new Error("Im markierten I-Stufen-Bereich wurde kein Wert erkannt. Bitte Bild schärfer aufnehmen oder den Profilbereich korrigieren.");
+            }
+
+            return {
+                value,
+                rawText,
+                profileName: activeProfile.name,
+                confidence: result && result.data
+                    ? Number(result.data.confidence || 0)
+                    : 0
+            };
+        }
+        finally {
+            passLabel = "";
+            progressCallback = null;
+        }
+    }
+
     async function terminate() {
         progressCallback = null;
         passLabel = "";
@@ -1433,6 +1487,7 @@
         loadConfig,
         getProfileName,
         recognizeBest,
+        recognizeProfileField,
         buildTrackingString,
         getMissingFieldsForQr,
         terminate

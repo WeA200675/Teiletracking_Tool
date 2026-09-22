@@ -117,5 +117,20 @@ assert.equal(
     true,
     "Erkannte QR-Werte müssen direkt in die Erfassung übernommen werden."
 );
+for (const fieldId of [
+    "qrPartNumberField",
+    "qrCpidField",
+    "qrHardwareField",
+    "captureIStufe"
+]) {
+    assert.equal(
+        indexSource.includes(`id="${fieldId}"`),
+        true,
+        `Das Erfassungsfeld ${fieldId} muss vorhanden sein.`
+    );
+}
+assert.equal(indexSource.includes('id="openIStufeOcrButton"'), true);
+assert.equal(appSource.includes("captureIStufeWithOcr"), true);
+assert.equal(appSource.includes('recognizeProfileField(\n            canvas,\n            "software"'), true);
 
 console.log("OCR privacy and validation tests: PASS");

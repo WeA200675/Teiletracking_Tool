@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teiletracking – Prototyp</title>
-    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="./styles.css?v=qr-fields-v1">
 </head>
 <body>
     <main class="app">
@@ -265,10 +265,35 @@
                         placeholder="PN=1234567;SN=SN001;HW=HW1;SW=SW1"></textarea>
                 </label>
 
-                <div class="field">
-                    <span>QR-Code</span>
-                    <textarea id="qrInput" rows="5" spellcheck="false"
-                        placeholder="PN=1234567;SN=SN001;HW=HW1;SW=SW1"></textarea>
+                <div class="field qr-capture-field">
+                    <span>Erfasste Teilewerte</span>
+                    <textarea id="qrInput" class="hidden" rows="5" spellcheck="false"
+                        aria-hidden="true" tabindex="-1"></textarea>
+
+                    <div class="qr-value-grid">
+                        <label class="field">
+                            <span>PartNumber</span>
+                            <input id="qrPartNumberField" type="text" autocomplete="off"
+                                placeholder="Wird aus dem QR-Code übernommen">
+                        </label>
+                        <label class="field">
+                            <span>CPID</span>
+                            <input id="qrCpidField" type="text" autocomplete="off"
+                                placeholder="Wird aus dem QR-Code übernommen">
+                        </label>
+                        <label class="field">
+                            <span>Hardware</span>
+                            <input id="qrHardwareField" type="text" autocomplete="off"
+                                placeholder="Wird aus dem QR-Code übernommen">
+                        </label>
+                        <label class="field">
+                            <span>I-Stufe (OCR vom Label)</span>
+                            <select id="captureIStufe">
+                                <option value="">Bitte wählen</option>
+                            </select>
+                            <small class="hint">Wird per Texterkennung vom sichtbaren Label gelesen und kann anschließend korrigiert werden.</small>
+                        </label>
+                    </div>
 
                     <div class="qr-field-actions">
                         <button
@@ -277,6 +302,14 @@
                             type="button"
                         >
                             QR-Code mit Kamera scannen
+                        </button>
+
+                        <button
+                            id="openIStufeOcrButton"
+                            class="button button-secondary button-small"
+                            type="button"
+                        >
+                            I-Stufe per OCR erfassen
                         </button>
 
                         <span id="qrScanResult" class="qr-scan-result" aria-live="polite"></span>
@@ -424,10 +457,8 @@
             </div>
 
             <p class="hint">
-                Die Teilewerte werden ausschließlich aus dem QR-/DataMatrix-Code übernommen.
-                Unterstützte Schlüssel: PN, SN, HW und SW; PN und SN sind Pflichtfelder.
-                Die <a href="./label-trainer.html">Labelprofil-App</a> bleibt als getrennte OCR-Test- und Trainingsoberfläche verfügbar,
-                beeinflusst aber bewusst nicht die QR-Code-Erfassung.
+                PartNumber, CPID und Hardware werden aus dem QR-/DataMatrix-Code übernommen.
+                Die I-Stufe wird mit dem aktiven <a href="./label-trainer.html">Labelprofil</a> per OCR vom sichtbaren Label gelesen.
             </p>
         </section>
 
@@ -842,8 +873,7 @@
                 </div>
 
                 <p class="hint">
-                    Richte den QR-/DataMatrix-Code vollständig im markierten Rahmen aus.
-                    Sobald der Code erkannt wurde, werden seine Werte übernommen und die Kamera automatisch geschlossen.
+                    Richte den QR-/DataMatrix-Code oder den sichtbaren I-Stufen-Aufdruck vollständig im markierten Rahmen aus.
                 </p>
             </div>
         </section>
@@ -861,7 +891,7 @@
     <script src="./ocr-service.js?v=privacy-ocr-v2"></script>
     <script src="./migration-service.js"></script>
     <script src="./feature-service.js"></script>
-    <script src="./app.js?v=qr-only-v1"></script>
+    <script src="./app.js?v=qr-fields-v1"></script>
 
     <script src="vision-preprocessor.js"></script>
 </body>
