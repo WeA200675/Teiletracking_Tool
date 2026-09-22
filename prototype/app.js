@@ -578,7 +578,7 @@ function getStatusMeta(status) {
                 cssClass: "ok",
                 cardClass: "status-ok",
                 title: "Teil ist plausibel",
-                message: "Label und QR stimmen überein. Die Zuordnung ist neu."
+                message: "QR-/DataMatrix-Werte sind gültig. Die Zuordnung ist neu."
             };
 
         case "DOUBLE_DERIVATIVE":
@@ -3653,7 +3653,7 @@ function openTrackingDetail(record) {
 
     assignmentGrid.append(
         createDetailField("PartNumber", partNumber),
-        createDetailField("SerialNumber", serialNumber),
+        createDetailField("CPID", serialNumber),
         createDetailField("Derivat", record.Derivat),
         createDetailField("I-Stufe", record.IStufe),
         createDetailField("ATS", record.ATS),
@@ -3727,14 +3727,6 @@ function openTrackingDetail(record) {
         createDetailField(
             "DoppelDerivat",
             record.DoppelDerivat === true ? "JA" : "NEIN",
-            false
-        ),
-        createDetailField(
-            "Abweichungsfelder",
-            Array.isArray(record.MismatchFields) &&
-            record.MismatchFields.length > 0
-                ? record.MismatchFields.join(", ")
-                : "KEINE",
             false
         )
     );
@@ -3812,7 +3804,6 @@ function openTrackingDetail(record) {
 
     elements.trackingDetailContent.append(
         assignmentSection,
-        comparisonSection,
         statusSection,
         sourceSection
     );
@@ -4108,11 +4099,6 @@ function resetTrackingFilters() {
 
 function checkCurrentInput() {
     try {
-        const label =
-            parseTrackingString(
-                elements.labelInput.value
-            );
-
         const qr =
             parseTrackingString(
                 elements.qrInput.value,
@@ -4120,6 +4106,13 @@ function checkCurrentInput() {
                     allowUnknown: true
                 }
             );
+
+        const label = {
+            ...qr
+        };
+
+        elements.labelInput.value =
+            elements.qrInput.value;
 
         const derivat =
             normalizeText(
@@ -4517,6 +4510,33 @@ elements.captureLabelButton.addEventListener(
     captureLabelPhoto
 );
 
+document.addEventListener(
+    "teiletracking:qr-detected",
+    event => {
+        const qrText =
+            String(
+                event.detail &&
+                event.detail.text ||
+                ""
+            ).trim();
+
+        if (!qrText) {
+            return;
+        }
+
+        elements.qrInput.value = qrText;
+        elements.labelInput.value = qrText;
+        elements.qrInput.dispatchEvent(
+            new Event("input", { bubbles: true })
+        );
+        setQrScanResult(
+            "QR-/DataMatrix-Code erkannt und übernommen.",
+            "success"
+        );
+        closeQrScanner();
+    }
+);
+
 elements.manualAddAfterScanButton.addEventListener(
     "click",
     openManualEntryAfterScan
@@ -4592,6 +4612,9 @@ for (
 elements.qrInput.addEventListener(
     "input",
     () => {
+        elements.labelInput.value =
+            elements.qrInput.value;
+
         if (
             !elements.labelOcrPanel.classList.contains(
                 "hidden"
