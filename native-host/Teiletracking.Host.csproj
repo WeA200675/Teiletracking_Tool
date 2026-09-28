@@ -9,10 +9,11 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <AssemblyName>Teiletracking</AssemblyName>
     <RootNamespace>Teiletracking</RootNamespace>
-    <Version>0.4.0</Version>
+    <Version>0.4.1</Version>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="../prototype/**" Link="app/prototype/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="../tests/data/**" Link="app/tests/data/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="appsettings.default.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
