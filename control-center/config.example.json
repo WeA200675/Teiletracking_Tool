@@ -1,0 +1,35 @@
+{
+  "Version": 1,
+  "SetupCompleted": false,
+  "Network": {
+    "Mode": "MANUAL_RANGE",
+    "PreferredCidr": "192.168.0.0/24",
+    "PreferredInterface": "",
+    "Port": 8000,
+    "MonitorSeconds": 10
+  },
+  "SharePoint": {
+    "Mode": "MANUAL",
+    "SiteUrl": "",
+    "ClientId": "",
+    "Lists": {
+      "Derivate": "Derivate",
+      "IStufen": "IStufen",
+      "Steuergeraete": "Steuergeraete",
+      "ImportBatches": "ImportBatches",
+      "ATS": "ATS",
+      "YNummern": "YNummern",
+      "Statuswerte": "Statuswerte"
+    },
+    "Libraries": {
+      "TrackingImportArchiv": "TrackingImportArchiv"
+    }
+  },
+  "Sync": {
+    "Automatic": true,
+    "RetryCount": 3,
+    "Fallback": "PACKAGE",
+    "IntervalSeconds": 60,
+    "ConflictPolicy": "HOLD"
+  }
+}
