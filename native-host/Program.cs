@@ -261,11 +261,24 @@ sealed class SyncWorker(ILogger<SyncWorker> log) : BackgroundService
         }
     }
 }
-sealed record QueueItem(string RecordId, string Status, int Attempts, DateTimeOffset CreatedAt, string? LastError, JsonNode Data)
+sealed class QueueItem
 {
-    public string Status { get; set; } = Status;
-    public int Attempts { get; set; } = Attempts;
-    public string? LastError { get; set; } = LastError;
+    public string RecordId { get; set; }
+    public string Status { get; set; }
+    public int Attempts { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public string? LastError { get; set; }
+    public JsonNode Data { get; set; }
+
+    public QueueItem(string recordId, string status, int attempts, DateTimeOffset createdAt, string? lastError, JsonNode data)
+    {
+        RecordId = recordId;
+        Status = status;
+        Attempts = attempts;
+        CreatedAt = createdAt;
+        LastError = lastError;
+        Data = data;
+    }
 }
 static class QueueStore
 {
