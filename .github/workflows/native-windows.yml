@@ -26,11 +26,15 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Publish self-contained Windows executable
         run: dotnet publish native-host/Teiletracking.Host.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist
-      - name: Create distribution
+      - name: Verify distribution
         shell: pwsh
         run: |
-          Copy-Item native-host/appsettings.default.json dist/appsettings.default.json
-          Compress-Archive -Path dist/* -DestinationPath Teiletracking-Windows-x64.zip
+          if (-not (Test-Path dist/Teiletracking.exe)) { throw "Teiletracking.exe fehlt" }
+          if (-not (Test-Path dist/appsettings.default.json)) { throw "appsettings.default.json fehlt" }
+          if (-not (Test-Path dist/app/prototype/index.html)) { throw "Tracking-Webapp fehlt" }
+      - name: Create distribution
+        shell: pwsh
+        run: Compress-Archive -Path dist/* -DestinationPath Teiletracking-Windows-x64.zip
       - uses: actions/upload-artifact@v4
         with:
           name: Teiletracking-Windows-x64
