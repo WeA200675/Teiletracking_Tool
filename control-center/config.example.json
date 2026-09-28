@@ -21,7 +21,15 @@
       "YNummern": "YNummern",
       "Statuswerte": "Statuswerte"
     },
-    "Libraries": {"TrackingImportArchiv": "TrackingImportArchiv"}
+    "Libraries": {
+      "TrackingImportArchiv": "TrackingImportArchiv"
+    }
   },
-  "Sync": {"Automatic": false, "RetryCount": 3, "Fallback": "PACKAGE"}
+  "Sync": {
+    "Automatic": true,
+    "RetryCount": 3,
+    "Fallback": "PACKAGE",
+    "IntervalSeconds": 60,
+    "ConflictPolicy": "HOLD"
+  }
 }
