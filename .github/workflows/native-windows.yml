@@ -1,6 +1,12 @@
 name: Native Windows Build
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'native-host/**'
+      - 'prototype/**'
+      - 'tests/data/**'
+      - '.github/workflows/native-windows.yml'
   push:
     branches: [ main ]
     paths:
