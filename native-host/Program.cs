@@ -401,7 +401,7 @@ app.MapPost("/api/sharepoint/test", async () =>
 });
 app.MapPost("/api/queue", async (HttpContext c) =>
 {
-    if (!c.Request.HasJsonContentType)
+    if (!c.Request.HasJsonContentType())
         return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
     JsonNode? data;
     try
