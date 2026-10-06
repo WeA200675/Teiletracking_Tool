@@ -63,7 +63,7 @@
                             id="openCustomStatusButton"
                             class="button button-ghost button-small"
                             type="button"
-                            onclick="const d=document.getElementById('masterDataDetails');if(d){d.open=true;}const p=document.getElementById('statusMasterPanel');if(p){p.classList.add('master-data-panel-attention');setTimeout(()=>p.classList.remove('master-data-panel-attention'),1800);}setTimeout(()=>{const e=document.getElementById('newStatusName');if(e){e.scrollIntoView({behavior:'smooth',block:'center'});e.focus();}},0);"
+                            id="openCustomStatusButton"
                         >
                             + Eigenschaft hinzufügen
                         </button>
@@ -882,6 +882,7 @@
     <script src="./migration-service.js"></script>
     <script src="./feature-service.js"></script>
     <script src="./app.js?v=duplicate-instance-v1"></script>
+    <script src="./security-ui.js"></script>
 
     <script src="vision-preprocessor.js"></script>
 </body>
