@@ -65,9 +65,9 @@ Kritische technische Sperre: Der native Host bindet HTTP/HTTPS an alle lokalen N
 
 ### 6. Öffentliche Quelle und Deployments
 
-- [ ] Quellrepo ist öffentlich und GitHub zeigt ein GitHub-Pages-Deployment. Verantwortliche müssen Inhalt, Logs/Artefakte und Zugriffsbedarf prüfen.
-- [ ] Vor BMW-Betrieb öffentliche Pages-Ausgabe nach Bedarf deaktivieren und Domain-/Deployment-Referenzen bereinigen. Beachten: Deaktivieren entfernt keine bereits geklonten Kopien oder Git-Historie.
-- [ ] Überlegen, ob öffentliche Quelle/Deployments nach Übernahme fortbestehen dürfen; Entscheidung durch Eigentümer und BMW Kommunikation/Legal treffen.
+- [x] Öffentliche Pages-App am 2026-10-06 zurückgezogen und Pages-Quelle auf `None` gesetzt. GitHub bestätigt: „GitHub Pages is currently disabled“.
+- [x] Pages-Neubuilds sind deaktiviert. Die frühere Live-Seite war die Teiletracking-Webapp unter `https://wea200675.github.io/Teiletracking_Tool/prototype/`.
+- [ ] Das Quellrepository und seine Git-Historie bleiben öffentlich. Eigentümer und BMW Kommunikation/Legal müssen vor dem GHE-Import über Privatstellung, Verbleib oder Archivierung des öffentlichen Quellrepos entscheiden. Das Abschalten von Pages entfernt keine bereits geklonten Kopien oder Git-Historie.
 - [ ] Vor dem internen Import öffentliche Git-Historie genauso scannen wie den aktuellen Stand. Bei sensiblen historischen Inhalten Git-Historie bereinigen und exponierte Geheimnisse rotieren.
 
 ## Empfohlene Transferabfolge
