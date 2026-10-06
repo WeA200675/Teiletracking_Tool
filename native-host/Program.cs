@@ -17,6 +17,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -88,22 +89,48 @@ object Interfaces() => NetworkInterface.GetAllNetworkInterfaces()
     .ToArray();
 
 var initial = LoadConfig();
-var port = initial["network"]?["port"]?.GetValue<int>() ?? 8000;
+var networkConfig = initial["network"]?.AsObject();
+var httpsConfig = initial["https"]?.AsObject();
+var port = networkConfig?["port"]?.GetValue<int>() ?? 8000;
+var httpsPort = httpsConfig?["port"]?.GetValue<int>() ?? 8443;
+var remoteRequested = networkConfig?["remoteAccessEnabled"]?.GetValue<bool>() ?? false;
+var pfxPath = httpsConfig?["pfxPath"]?.GetValue<string>() ?? "";
+var pfxPassword = Environment.GetEnvironmentVariable("TEILETRACKING_PFX_PASSWORD");
+var remoteBindAddress = FindAddress(initial);
+X509Certificate2? remoteCertificate = null;
+if (remoteRequested && httpsConfig?["enabled"]?.GetValue<bool>() == true &&
+    port != httpsPort && !string.IsNullOrWhiteSpace(remoteBindAddress) &&
+    !string.IsNullOrWhiteSpace(pfxPath) && File.Exists(pfxPath) &&
+    !string.IsNullOrEmpty(pfxPassword) && pfxPassword.Length >= 20)
+{
+    try
+    {
+        var candidate = X509CertificateLoader.LoadPkcs12FromFile(
+            pfxPath, pfxPassword, X509KeyStorageFlags.EphemeralKeySet);
+        if (candidate.HasPrivateKey && candidate.NotBefore <= DateTime.UtcNow &&
+            candidate.NotAfter > DateTime.UtcNow)
+            remoteCertificate = candidate;
+        else
+            candidate.Dispose();
+    }
+    catch (Exception ex)
+    {
+        Log("ERROR", "HTTPS-CONFIG-001", "Remote-Zugriff deaktiviert: Zertifikat konnte nicht sicher geladen werden (" + ex.GetType().Name + ").");
+    }
+}
+var remoteAccessAvailable = remoteRequested && remoteCertificate is not null &&
+    !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TEILETRACKING_ACCESS_PASSWORD")) &&
+    Environment.GetEnvironmentVariable("TEILETRACKING_ACCESS_PASSWORD")!.Length >= 20;
+if (remoteRequested && !remoteAccessAvailable)
+    Log("ERROR", "REMOTE-ACCESS-001", "Remote-Zugriff bleibt gesperrt. Erforderlich sind ein gültiges HTTPS-Zertifikat, ein starkes TEILETRACKING_ACCESS_PASSWORD und eine passende Netzwerkschnittstelle.");
+
 builder.WebHost.ConfigureKestrel(k =>
 {
-    k.ListenAnyIP(port);
-    var https = initial["https"]?.AsObject();
-    if (https?["enabled"]?.GetValue<bool>() == true)
-    {
-        var httpsPort = https["port"]?.GetValue<int>() ?? 8443;
-        var pfx = https["pfxPath"]?.GetValue<string>() ?? "";
-        var envName = https["pfxPasswordEnvironmentVariable"]?.GetValue<string>() ?? "TEILETRACKING_PFX_PASSWORD";
-        var password = Environment.GetEnvironmentVariable(envName);
-        if (!string.IsNullOrWhiteSpace(pfx) && File.Exists(pfx) && !string.IsNullOrEmpty(password))
-            k.ListenAnyIP(httpsPort, o => o.UseHttps(pfx, password));
-        else
-            Log("ERROR", "HTTPS-CONFIG-001", "HTTPS ist aktiviert, aber Zertifikat oder Passwort fehlt.");
-    }
+    k.Limits.MaxRequestBodySize = 1024 * 1024;
+    k.Listen(IPAddress.Loopback, port);
+    if (remoteAccessAvailable)
+        k.Listen(IPAddress.Parse(remoteBindAddress!), httpsPort,
+            options => options.UseHttps(remoteCertificate!));
 });
 
 builder.Services.AddSingleton(new RuntimeState());
@@ -111,26 +138,175 @@ builder.Services.AddHostedService<NetworkMonitor>();
 builder.Services.AddHostedService<SyncWorker>();
 var app = builder.Build();
 
+var sessions = new ConcurrentDictionary<string, DateTimeOffset>(StringComparer.Ordinal);
+var failedLogins = new ConcurrentDictionary<string, LoginAttemptState>(StringComparer.Ordinal);
+
+bool IsSameOrigin(HttpContext context)
+{
+    var origin = context.Request.Headers.Origin.ToString();
+    if (string.IsNullOrWhiteSpace(origin) ||
+        !Uri.TryCreate(origin, UriKind.Absolute, out var parsed))
+        return false;
+    return parsed.Scheme.Equals(context.Request.Scheme, StringComparison.OrdinalIgnoreCase) &&
+        parsed.Authority.Equals(context.Request.Host.Value, StringComparison.OrdinalIgnoreCase);
+}
+string SafeReturnPath(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value) || !value.StartsWith('/') ||
+        value.StartsWith("//", StringComparison.Ordinal) ||
+        value.Contains('\\') || value.Contains('\r') || value.Contains('\n'))
+        return "/prototype/";
+    return value;
+}
+bool IsBoundedJson(JsonNode? node, int depth = 0)
+{
+    if (depth > 16) return false;
+    if (node is JsonObject obj)
+        return obj.Count <= 128 && obj.All(pair =>
+            pair.Key.Length <= 128 && IsBoundedJson(pair.Value, depth + 1));
+    if (node is JsonArray array)
+        return array.Count <= 1000 && array.All(item => IsBoundedJson(item, depth + 1));
+    if (node is JsonValue value)
+    {
+        try { return value.GetValue<string>().Length <= 8192; } catch { }
+        try { _ = value.GetValue<double>(); return true; } catch { }
+        try { _ = value.GetValue<bool>(); return true; } catch { }
+        return false;
+    }
+    return true;
+}
+
 app.Use(async (ctx, next) =>
 {
+    var loopback = IPAddress.IsLoopback(ctx.Connection.RemoteIpAddress ?? IPAddress.None);
     ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    ctx.Response.Headers["X-Frame-Options"] = "DENY";
     ctx.Response.Headers["Referrer-Policy"] = "no-referrer";
+    ctx.Response.Headers["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=()";
+    ctx.Response.Headers["Content-Security-Policy"] = loopback
+        ? "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' https://cdn.jsdelivr.net; worker-src 'self' blob:"
+        : "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://cdn.jsdelivr.net; worker-src 'self' blob:";
+    if (ctx.Request.IsHttps)
+        ctx.Response.Headers["Strict-Transport-Security"] = "max-age=31536000";
+
+    var unsafeMethod = HttpMethods.IsPost(ctx.Request.Method) ||
+        HttpMethods.IsPut(ctx.Request.Method) || HttpMethods.IsPatch(ctx.Request.Method) ||
+        HttpMethods.IsDelete(ctx.Request.Method);
+    if (unsafeMethod && !IsSameOrigin(ctx))
+    {
+        ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await ctx.Response.WriteAsJsonAsync(new { error = "Cross-Origin-Anfrage abgelehnt." });
+        return;
+    }
+
+    var isLoginPage = ctx.Request.Path.Equals("/login", StringComparison.OrdinalIgnoreCase);
+    var isLoginPost = ctx.Request.Path.Equals("/api/auth/login", StringComparison.OrdinalIgnoreCase);
+    if (!loopback && (isLoginPage || isLoginPost))
+    {
+        await next();
+        return;
+    }
+
+    if (!loopback)
+    {
+        var cookie = ctx.Request.Cookies["tt_session"];
+        var authenticated = remoteAccessAvailable && cookie is not null &&
+            sessions.TryGetValue(cookie, out var expiresAt) && expiresAt > DateTimeOffset.UtcNow;
+        if (!authenticated)
+        {
+            if (cookie is not null) sessions.TryRemove(cookie, out _);
+            if (HttpMethods.IsGet(ctx.Request.Method) &&
+                ctx.Request.Headers.Accept.Any(value => value?.Contains("text/html", StringComparison.OrdinalIgnoreCase) == true))
+            {
+                var returnTo = Uri.EscapeDataString(SafeReturnPath(ctx.Request.Path + ctx.Request.QueryString));
+                ctx.Response.Redirect("/login?returnTo=" + returnTo);
+            }
+            else
+            {
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await ctx.Response.WriteAsJsonAsync(new { error = "Anmeldung erforderlich." });
+            }
+            return;
+        }
+    }
     await next();
 });
 
 app.MapGet("/", () => Results.Redirect("/prototype/"));
-app.MapGet("/health", (RuntimeState state) => Results.Ok(new { status = "ok", version = "0.4.0", startedAt = state.StartedAt }));
+app.MapGet("/login", (HttpContext ctx) =>
+{
+    ctx.Response.Headers["Cache-Control"] = "no-store";
+    var returnTo = WebUtility.HtmlEncode(SafeReturnPath(ctx.Request.Query["returnTo"]));
+    return Results.Content(LoginPage.Html.Replace("{{RETURN_TO}}", returnTo), "text/html; charset=utf-8");
+});
+app.MapPost("/api/auth/login", async (HttpContext ctx) =>
+{
+    if (!remoteAccessAvailable || (!ctx.Request.IsHttps &&
+        !IPAddress.IsLoopback(ctx.Connection.RemoteIpAddress ?? IPAddress.None)))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    if (!ctx.Request.HasFormContentType || (ctx.Request.ContentLength ?? 0) > 16384)
+        return Results.BadRequest(new { error = "Ungültige Anmeldedaten." });
+
+    var ip = (ctx.Connection.RemoteIpAddress ?? IPAddress.None).ToString();
+    var attempts = failedLogins.GetOrAdd(ip, _ => new LoginAttemptState());
+    lock (attempts)
+    {
+        if (DateTimeOffset.UtcNow - attempts.WindowStarted > TimeSpan.FromMinutes(15))
+        {
+            attempts.WindowStarted = DateTimeOffset.UtcNow;
+            attempts.Failures = 0;
+        }
+        if (attempts.Failures >= 5)
+            return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+    }
+
+    var form = await ctx.Request.ReadFormAsync(ctx.RequestAborted);
+    var supplied = Encoding.UTF8.GetBytes(form["password"].ToString());
+    var expected = Encoding.UTF8.GetBytes(Environment.GetEnvironmentVariable("TEILETRACKING_ACCESS_PASSWORD") ?? "");
+    if (expected.Length < 20 || !CryptographicOperations.FixedTimeEquals(supplied, expected))
+    {
+        lock (attempts) attempts.Failures++;
+        return Results.Content(LoginPage.FailureHtml.Replace("{{RETURN_TO}}",
+            WebUtility.HtmlEncode(SafeReturnPath(form["returnTo"]))), "text/html; charset=utf-8",
+            statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    lock (attempts) attempts.Failures = 0;
+    var sessionId = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+        .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    sessions[sessionId] = DateTimeOffset.UtcNow.AddHours(8);
+    ctx.Response.Cookies.Append("tt_session", sessionId, new CookieOptions
+    {
+        HttpOnly = true, Secure = true, SameSite = SameSiteMode.Strict,
+        IsEssential = true, Path = "/", MaxAge = TimeSpan.FromHours(8)
+    });
+    return Results.Redirect(SafeReturnPath(form["returnTo"]));
+});
+app.MapPost("/api/auth/logout", (HttpContext ctx) =>
+{
+    if (ctx.Request.Cookies.TryGetValue("tt_session", out var cookie) && cookie is not null)
+        sessions.TryRemove(cookie, out _);
+    ctx.Response.Cookies.Delete("tt_session", new CookieOptions
+    {
+        HttpOnly = true, Secure = !IPAddress.IsLoopback(ctx.Connection.RemoteIpAddress ?? IPAddress.None),
+        SameSite = SameSiteMode.Strict, Path = "/"
+    });
+    return Results.Redirect("/login");
+});
+app.MapGet("/health", (RuntimeState state) => Results.Ok(new { status = "ok", version = "0.4.1", startedAt = state.StartedAt }));
 app.MapGet("/api/status", (RuntimeState state) =>
 {
     var cfg = LoadConfig();
     var ip = FindAddress(cfg);
     var q = QueueStore.Load(queuePath);
+    var currentPort = cfg["network"]?["port"]?.GetValue<int>() ?? 8000;
     return Results.Ok(new {
-        version = "0.4.0",
+        version = "0.4.1",
         setupCompleted = cfg["setupCompleted"]?.GetValue<bool>() ?? false,
+        remoteAccessEnabled = remoteAccessAvailable,
         activeIp = ip,
-        port = cfg["network"]?["port"]?.GetValue<int>() ?? 8000,
-        url = ip is null ? null : $"http://{ip}:{port}/prototype/",
+        port = remoteAccessAvailable ? httpsPort : currentPort,
+        url = remoteAccessAvailable && ip is not null ? $"https://{ip}:{httpsPort}/prototype/" : null,
         sharePointMode = cfg["sharePoint"]?["mode"]?.GetValue<string>() ?? "DISABLED",
         pending = q.Count(x => x.Status is "PENDING" or "RETRY_WAIT"),
         errors = q.Count(x => x.Status is "ERROR" or "CONFLICT"),
@@ -148,12 +324,36 @@ app.MapGet("/api/config", (HttpContext c) =>
 });
 app.MapPut("/api/config", async (HttpContext c) =>
 {
-    if (!IPAddress.IsLoopback(c.Connection.RemoteIpAddress ?? IPAddress.None)) return Results.StatusCode(403);
-    var cfg = await JsonNode.ParseAsync(c.Request.Body) as JsonObject;
-    if (cfg is null) return Results.BadRequest(new { error = "Ungültige Konfiguration." });
+    if (!IPAddress.IsLoopback(c.Connection.RemoteIpAddress ?? IPAddress.None))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    JsonObject? cfg;
+    try
+    {
+        cfg = await JsonNode.ParseAsync(c.Request.Body,
+            documentOptions: new JsonDocumentOptions { MaxDepth = 16 },
+            cancellationToken: c.RequestAborted) as JsonObject;
+    }
+    catch (JsonException)
+    {
+        return Results.BadRequest(new { error = "Ungültiges JSON." });
+    }
+    if (cfg is null || !IsBoundedJson(cfg))
+        return Results.BadRequest(new { error = "Ungültige Konfiguration." });
+    var network = cfg["network"] as JsonObject;
+    var https = cfg["https"] as JsonObject;
+    var configuredPort = network?["port"]?.GetValue<int>() ?? 0;
+    var configuredHttpsPort = https?["port"]?.GetValue<int>() ?? 0;
+    if (configuredPort is < 1024 or > 65535 ||
+        configuredHttpsPort is < 1024 or > 65535 ||
+        configuredPort == configuredHttpsPort)
+        return Results.BadRequest(new { error = "HTTP- und HTTPS-Port müssen verschieden und zwischen 1024 und 65535 sein." });
+    if ((network?["remoteAccessEnabled"]?.GetValue<bool>() ?? false) &&
+        !(https?["enabled"]?.GetValue<bool>() ?? false))
+        return Results.BadRequest(new { error = "Remote-Zugriff erfordert HTTPS." });
+
     cfg["setupCompleted"] = true;
     SaveConfig(cfg);
-    Log("INFO", "CONFIG-001", "Konfiguration gespeichert. Port-/HTTPS-Änderungen werden nach Neustart aktiv.");
+    Log("INFO", "CONFIG-001", "Konfiguration gespeichert. Änderungen werden nach Neustart aktiv.");
     return Results.Ok(new { saved = true, restartRequired = true });
 });
 app.MapPost("/api/sharepoint/test", async () =>
@@ -163,11 +363,20 @@ app.MapPost("/api/sharepoint/test", async () =>
     var mode = sp["mode"]?.GetValue<string>() ?? "DISABLED";
     var site = sp["siteUrl"]?.GetValue<string>() ?? "";
     if (mode == "DISABLED") return Results.Ok(new { reachable = false, code = "SP-DISABLED", message = "SharePoint ist deaktiviert." });
-    if (!Uri.TryCreate(site, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
-        return Results.BadRequest(new { reachable = false, code = "SP-CONFIG-001", message = "SharePoint SiteUrl fehlt oder ist ungültig." });
+    if (!Uri.TryCreate(site, UriKind.Absolute, out var uri) ||
+        uri.Scheme != Uri.UriSchemeHttps || !uri.IsDefaultPort ||
+        !string.IsNullOrEmpty(uri.UserInfo) || IPAddress.TryParse(uri.Host, out _))
+        return Results.BadRequest(new { reachable = false, code = "SP-CONFIG-001", message = "Zulässig ist nur eine HTTPS-Site ohne Zugangsdaten in der URL." });
+
+    var allowedHosts = (Environment.GetEnvironmentVariable("TEILETRACKING_SHAREPOINT_ALLOWED_HOSTS") ?? "")
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    if (allowedHosts.Count == 0 || !allowedHosts.Contains(uri.IdnHost))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+
     try
     {
-        using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(15) };
+        using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(10) };
         using var req = new HttpRequestMessage(HttpMethod.Head, uri);
         var res = await client.SendAsync(req);
         var reachable = (int)res.StatusCode < 500;
@@ -175,18 +384,47 @@ app.MapPost("/api/sharepoint/test", async () =>
     }
     catch (Exception ex)
     {
-        Log("ERROR", "SP-NET-003", ex.Message);
-        return Results.Ok(new { reachable = false, code = "SP-NET-003", message = ex.Message });
+        Log("ERROR", "SP-NET-003", "SharePoint-Erreichbarkeit fehlgeschlagen (" + ex.GetType().Name + ").");
+        return Results.Ok(new { reachable = false, code = "SP-NET-003", message = "Erreichbarkeit fehlgeschlagen." });
     }
 });
 app.MapPost("/api/queue", async (HttpContext c) =>
 {
-    var data = await JsonNode.ParseAsync(c.Request.Body);
-    if (data is null) return Results.BadRequest();
-    var id = data["RecordId"]?.GetValue<string>() ?? Guid.NewGuid().ToString();
+    if (!c.Request.HasJsonContentType)
+        return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType);
+    JsonNode? data;
+    try
+    {
+        data = await JsonNode.ParseAsync(c.Request.Body,
+            documentOptions: new JsonDocumentOptions { MaxDepth = 16 },
+            cancellationToken: c.RequestAborted);
+    }
+    catch (JsonException)
+    {
+        return Results.BadRequest(new { error = "Ungültiges JSON." });
+    }
+    if (data is not JsonObject || !IsBoundedJson(data))
+        return Results.BadRequest(new { error = "Datensatzformat oder -größe ist unzulässig." });
+
+    string id;
+    if (data["RecordId"] is JsonNode idNode)
+    {
+        if (idNode is not JsonValue idValue || !idValue.TryGetValue<string>(out var suppliedId) ||
+            string.IsNullOrWhiteSpace(suppliedId) || suppliedId.Length > 128)
+            return Results.BadRequest(new { error = "RecordId ist ungültig." });
+        id = suppliedId;
+    }
+    else
+    {
+        id = Guid.NewGuid().ToString("D");
+    }
+
     var q = QueueStore.Load(queuePath);
-    if (q.Any(x => x.RecordId == id)) return Results.Conflict(new { code = "SYNC-DUPLICATE-001", recordId = id });
-    q.Add(new QueueItem(id, "PENDING", 0, DateTimeOffset.Now, null, data));
+    if (q.Count >= 10000)
+        return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+    if (q.Any(x => x.RecordId == id))
+        return Results.Conflict(new { code = "SYNC-DUPLICATE-001", recordId = id });
+    q.Add(new QueueItem(id, "PENDING", 0, DateTimeOffset.UtcNow, null, data));
     QueueStore.Save(queuePath, q);
     return Results.Accepted(value: new { recordId = id, status = "PENDING" });
 });
@@ -315,6 +553,27 @@ static class QueueStore
         }
     }
 }
+
+sealed class LoginAttemptState
+{
+    public DateTimeOffset WindowStarted { get; set; } = DateTimeOffset.UtcNow;
+    public int Failures { get; set; }
+}
+static class LoginPage
+{
+    public const string Html = """
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Teiletracking Anmeldung</title>
+<style>body{font:16px Segoe UI,Arial,sans-serif;background:#f4f6f8;color:#17212b;margin:0}main{max-width:420px;margin:12vh auto;padding:24px;background:white;border:1px solid #d6dce2;border-radius:12px}label{display:block;margin:18px 0 6px}input{box-sizing:border-box;width:100%;padding:12px;font:inherit}button{margin-top:18px;padding:11px 16px;background:#164b70;color:white;border:0;border-radius:6px;font:inherit}p{line-height:1.5}</style></head>
+<body><main><h1>Teiletracking</h1><p>Für den Netzwerkzugriff ist die Anmeldung erforderlich.</p>
+<form method="post" action="/api/auth/login"><input type="hidden" name="returnTo" value="{{RETURN_TO}}">
+<label for="password">Zugriffspasswort</label><input id="password" name="password" type="password" autocomplete="current-password" required minlength="20" maxlength="256">
+<button type="submit">Anmelden</button></form></main></body></html>
+""";
+    public const string FailureHtml = """
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Anmeldung fehlgeschlagen</title></head>
+<body><main><h1>Anmeldung fehlgeschlagen</h1><p>Prüfe das Zugriffspasswort und versuche es erneut.</p><a href="/login?returnTo={{RETURN_TO}}">Zur Anmeldung</a></main></body></html>
+""";
+}
 static class ControlCenter
 {
 public const string Html = """
@@ -332,7 +591,8 @@ small{color:#555}.ok{color:#167c35}.warn{color:#9a5b00}pre{white-space:pre-wrap}
 <label>Netzwerk des Tracking-PCs (CIDR)<input id="cidr" placeholder="10.138.24.0/24"></label>
 <label>Bevorzugte Schnittstelle<input id="iface" placeholder="z. B. bmw"></label>
 <label>HTTP-Port<input id="port" type="number"></label>
-<small>Das Programm ändert keine Windows-Netzwerkeinstellungen. Portänderungen werden nach Neustart aktiv.</small></div>
+<label><input id="remoteEnabled" type="checkbox" style="width:auto"> Zugriff aus dem ausgewählten Netz aktivieren</label>
+<small>Standard ist nur Zugriff auf diesem PC. Netzwerkzugriff wird nur mit HTTPS-Zertifikat und TEILETRACKING_ACCESS_PASSWORD (mindestens 20 Zeichen) geöffnet.</small></div>
 <div class="card"><h2>HTTPS für Smartphone-Kamera</h2>
 <label><input id="httpsEnabled" type="checkbox" style="width:auto"> HTTPS aktivieren</label>
 <label>HTTPS-Port<input id="httpsPort" type="number"></label>
@@ -346,9 +606,9 @@ small{color:#555}.ok{color:#167c35}.warn{color:#9a5b00}pre{white-space:pre-wrap}
 <div class="card"><button onclick="save()">Konfiguration speichern</button><button onclick="exportQueue()">Fallback-Paket exportieren</button><pre id="result"></pre></div>
 </main><script>
 let cfg;
-async function load(){cfg=await (await fetch('/api/config')).json();netMode.value=cfg.network.mode;cidr.value=cfg.network.preferredNetwork;iface.value=cfg.network.preferredInterface;port.value=cfg.network.port;httpsEnabled.checked=cfg.https.enabled;httpsPort.value=cfg.https.port;pfx.value=cfg.https.pfxPath;spMode.value=cfg.sharePoint.mode;site.value=cfg.sharePoint.siteUrl;client.value=cfg.sharePoint.clientId;await loadStatus();const xs=await(await fetch('/api/interfaces')).json();interfaces.innerHTML=xs.map(x=>'<div><b>'+esc(x.name)+'</b>: '+esc(x.address)+'/'+x.prefixLength+'</div>').join('')}
+async function load(){cfg=await (await fetch('/api/config')).json();netMode.value=cfg.network.mode;cidr.value=cfg.network.preferredNetwork;iface.value=cfg.network.preferredInterface;port.value=cfg.network.port;remoteEnabled.checked=cfg.network.remoteAccessEnabled===true;httpsEnabled.checked=cfg.https.enabled;httpsPort.value=cfg.https.port;pfx.value=cfg.https.pfxPath;spMode.value=cfg.sharePoint.mode;site.value=cfg.sharePoint.siteUrl;client.value=cfg.sharePoint.clientId;await loadStatus();const xs=await(await fetch('/api/interfaces')).json();interfaces.innerHTML=xs.map(x=>'<div><b>'+esc(x.name)+'</b>: '+esc(x.address)+'/'+x.prefixLength+'</div>').join('')}
 async function loadStatus(){const s=await(await fetch('/api/status')).json();status.innerHTML='<div class="grid"><div><b>Version</b><br>'+esc(s.version)+'</div><div><b>Aktive IP</b><br>'+esc(s.activeIp||'keine')+'</div><div><b>Port</b><br>'+s.port+'</div><div><b>Queue</b><br>'+s.pending+' ausstehend / '+s.errors+' Fehler</div></div>'}
-async function save(){cfg.network.mode=netMode.value;cfg.network.preferredNetwork=cidr.value.trim();cfg.network.preferredInterface=iface.value.trim();cfg.network.port=+port.value;cfg.https.enabled=httpsEnabled.checked;cfg.https.port=+httpsPort.value;cfg.https.pfxPath=pfx.value.trim();cfg.sharePoint.mode=spMode.value;cfg.sharePoint.siteUrl=site.value.trim();cfg.sharePoint.clientId=client.value.trim();result.textContent=JSON.stringify(await(await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(cfg)})).json(),null,2)}
+async function save(){cfg.network.mode=netMode.value;cfg.network.preferredNetwork=cidr.value.trim();cfg.network.preferredInterface=iface.value.trim();cfg.network.port=+port.value;cfg.network.remoteAccessEnabled=remoteEnabled.checked;cfg.https.enabled=httpsEnabled.checked;cfg.https.port=+httpsPort.value;cfg.https.pfxPath=pfx.value.trim();cfg.sharePoint.mode=spMode.value;cfg.sharePoint.siteUrl=site.value.trim();cfg.sharePoint.clientId=client.value.trim();result.textContent=JSON.stringify(await(await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(cfg)})).json(),null,2)}
 async function testSp(){spResult.textContent=JSON.stringify(await(await fetch('/api/sharepoint/test',{method:'POST'})).json(),null,2)}
 async function exportQueue(){result.textContent=JSON.stringify(await(await fetch('/api/sync/export',{method:'POST'})).json(),null,2)}
 function esc(x){return String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}load();
