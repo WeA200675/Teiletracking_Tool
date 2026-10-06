@@ -16,6 +16,7 @@ Kritische technische Sperre: Der native Host bindet HTTP/HTTPS an alle lokalen N
 - Actions in den zwei vorhandenen Workflows sind auf unveränderliche Commit-SHAs festgelegt; die ursprünglichen Versions-Tags stehen als Kommentare daneben.
 - Der native Build nutzt auf GitHub.com `upload-artifact@v4.6.2` und auf GitHub Enterprise Server `upload-artifact@v3.2.2-node20`, jeweils SHA-gepinnt. Diese Plattformtrennung ist erforderlich, weil die v4+-Reihe laut Upstream-Aktionsdokumentation derzeit nicht auf GHES unterstützt wird.
 - Least-privilege `contents: read` blieb für die Workflows erhalten.
+- Der Windows-Host und Build-Workflow zielen auf .NET 10 LTS. .NET 8 hätte am 10.11.2026 Supportende; .NET 10 ist laut Microsoft bis November 2028 unterstützt. [Microsoft .NET Support Policy](https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core).
 - Diese Übergabe beschreibt Daten-, Lizenz-, Sicherheits-, Betriebs- und Migrationsprüfungen und enthält eine PR-Checkliste.
 
 ## Freigabegates – vor Import/Zusammenführung abzuschließen
@@ -55,7 +56,7 @@ Kritische technische Sperre: Der native Host bindet HTTP/HTTPS an alle lokalen N
 ### 5. GHE-Repository und CI-Betrieb
 
 - [ ] Ziel-Owner/Organisation, Repositoryname, interne Sichtbarkeit, Teams/Owner, CODEOWNERS und Branch-Protection durch GHE-Verantwortliche festlegen.
-- [ ] GHES-Version, Runner-Betriebssysteme/Labels, installierte Node-Runtimes und Aktionsrichtlinien prüfen. Workflows benötigen Linux-Runner mit Node 22/PowerShell 7 und Windows-Runner mit .NET SDK 8.
+- [ ] GHES-Version, Runner-Betriebssysteme/Labels, installierte Node-Runtimes und Aktionsrichtlinien prüfen. Workflows benötigen Linux-Runner mit Node 22/PowerShell 7 und Windows-Runner mit .NET SDK 10.
 - [ ] Gepinnte Actions und alle transitiven Aktionen im GHE-Actions-Allowlist-/Mirror-Prozess freigeben. Keine ungeprüften Actions aus externen Repositories zulassen.
 - [ ] Artifact-Aufbewahrung, Zugriff und Löschfristen in GHES festlegen; Artefakt enthält selbstenthaltene Windows-Binaries.
 - [ ] Geheimnisscan, Code-/Dependency-Scan, Lizenzprüfung, SBOM-Erstellung und Build-Provenienz gemäß BMW-Standard als erforderliche PR-Gates konfigurieren.
