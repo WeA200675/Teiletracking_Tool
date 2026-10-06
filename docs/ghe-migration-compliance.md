@@ -18,7 +18,7 @@ Die öffentliche Quelle bleibt öffentlich; die Git-Historie und bisherige Verö
 - Remote-Anmeldungen verwenden begrenzte Sessions und fehlgeschlagene Versuche, HttpOnly-/Secure-/SameSite-Cookies, Same-Origin-Prüfung für schreibende Requests und eine Größenbegrenzung für HTTP-Anfragen.
 - Queue-Eingaben werden in Form, Tiefe und Größe geprüft; SharePoint-Erreichbarkeit nutzt HTTPS, folgt keinen Redirects und benötigt eine Host-Allowlist.
 - Sicherheitsheader/CSP wurden gesetzt; ein Inline-Handler der Haupt-App wurde entfernt. Die CSP erlaubt weiterhin jsDelivr als Laufzeitquelle für Fremdbibliotheken.
-- Standardkonfiguration und Betriebsdokumentation wurden an die Loopback-Grundlinie angepasst. Datenschutzdokumentation nennt jetzt korrekt die persistente Speicherung von Labelbildern in IndexedDB und die Löschgrenze.
+- Standardkonfiguration und Betriebsdokumentation wurden an die Loopback-Grundlinie angepasst. Datenschutzdokumentation unterscheidet nun die im Browser gespeicherten Tracking-Datensätze von den aktuell nicht persistierten Labelbildern; ein Datenschutztest prüft dies.
 - Diese Härtung wurde noch nicht durch BMW Security geprüft. Der Windows-Build und die vorhandenen Tests müssen nach dem letzten Commit erneut erfolgreich laufen.
 
 ## Bereits vorbereitet
