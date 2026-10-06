@@ -2,7 +2,7 @@
 
 Prototyp für Teiletracking, QR-/OCR-Erfassung, lokale Queue und SharePoint-Migrationswerkzeuge.
 
-> **Betriebsstatus:** Der aktuelle Stand ist nicht für produktive BMW-Daten freigegeben. Vor einem Einsatz in BMW-Umgebungen müssen die Rechte-, Datenschutz-, Security-, OSS- und Betriebsfreigaben aus [docs/ghe-migration-compliance.md](docs/ghe-migration-compliance.md) abgeschlossen sein. Der native Windows-Host stellt LAN-Endpunkte ohne Anmeldung bereit und verwendet öffentliche CDN-Skripte; beide Punkte sind Freigabegates.
+> **Betriebsstatus:** Nicht für produktive BMW-Daten freigegeben. Der native Host ist standardmäßig Loopback-only; Netzwerkzugriff erfordert eine explizite Aktivierung mit HTTPS-Zertifikat und starkem Kennwort. Vor einem BMW-Einsatz müssen Rechte-, Datenschutz-, Security-, OSS- und Betriebsfreigaben aus [docs/ghe-migration-compliance.md](docs/ghe-migration-compliance.md) abgeschlossen sein.
 
 ## Lokaler Einstieg
 
