@@ -1,6 +1,6 @@
 # Teiletracking Native Windows Host
 
-Dieser Host ersetzt den bisherigen Python-/PowerShell-Startpfad für den normalen Betrieb.
+Dieser Host stellt den lokalen Webprototyp bereit. Netzwerkzugriff ist standardmäßig deaktiviert.
 
 ## Ziel
 
@@ -11,8 +11,6 @@ Dieser Host ersetzt den bisherigen Python-/PowerShell-Startpfad für den normale
 - automatische Erkennung aktiver IPv4-Schnittstellen
 - lokale Konfiguration unter `%LOCALAPPDATA%\Teiletracking\config.json`
 - Control Center nur über Loopback: `http://127.0.0.1:8000/control-center`
-- Tracking über LAN: `http://<PC-IP>:8000/prototype/`
-- optional HTTPS mit einem von der Organisation bereitgestellten PFX-Zertifikat
 - dauerhafte lokale Sync-Queue und SHA-256-Fallback-Pakete
 
 ## Build
@@ -29,25 +27,31 @@ dotnet publish native-host/Teiletracking.Host.csproj -c Release -r win-x64 --sel
 
 ZIP entpacken und `Teiletracking.exe` per Doppelklick starten. Es wird keine PowerShell-Ausführungsrichtlinie geändert. Beim ersten Start öffnet sich das lokale Control Center.
 
-## Netzwerk
+## Netzwerk und Anmeldung
 
-`MANUAL_RANGE` wählt nur eine bereits vorhandene IPv4-Adresse aus dem konfigurierten CIDR. Die Windows-Netzwerkkonfiguration wird nicht verändert. `AUTO` verwendet eine aktive IPv4-Schnittstelle. Der integrierte Monitor erkennt Adressänderungen.
+Der sichere Standard ist Loopback-only: HTTP lauscht nur auf `127.0.0.1`. Die bevorzugte Netzwerkschnittstelle bestimmt keine Netzwerkfreigabe.
 
-Kestrel lauscht auf allen lokalen Adressen. Die Auswahl des bevorzugten Netzes bestimmt, welche Adresse im Status als Tracking-Adresse veröffentlicht wird.
+Ein Netzwerkzugriff wird nur geöffnet, wenn alle Voraussetzungen erfüllt sind:
 
-## Smartphone und HTTPS
+1. `network.remoteAccessEnabled` ist explizit aktiviert.
+2. HTTPS ist aktiviert und ein gültiges PFX-Zertifikat mit privatem Schlüssel ist vorhanden.
+3. `TEILETRACKING_PFX_PASSWORD` enthält das PFX-Kennwort.
+4. `TEILETRACKING_ACCESS_PASSWORD` ist gesetzt und mindestens 20 Zeichen lang.
+5. Die konfigurierte Netzwerkschnittstelle liefert eine IPv4-Adresse.
 
-Browser-Kamerazugriff auf einem Smartphone benötigt einen sicheren Kontext. Für LAN-Betrieb ist deshalb ein Zertifikat nötig, dem das Smartphone vertraut. Ein beliebiges selbstsigniertes Zertifikat löst dieses Problem nicht zuverlässig.
+Der entfernte Listener bindet ausschließlich an diese ausgewählte IPv4-Adresse und ausschließlich per HTTPS. Fehlt eine Voraussetzung oder ist das Zertifikat ungültig/abgelaufen, bleibt der Listener geschlossen. HTTP bleibt auf Loopback. Anmeldungen werden pro Quell-IP begrenzt; Sessions sind acht Stunden gültig und verwenden ein HttpOnly-/Secure-/SameSite-Cookie. Schreibende HTTP-Anfragen ohne passende Origin werden abgewiesen. Queue-Eingaben sind größen- und tiefenbegrenzt.
 
-Im Control Center können PFX-Pfad und HTTPS-Port konfiguriert werden. Das PFX-Passwort wird **nicht** in JSON gespeichert. Es wird aus der Umgebungsvariable `TEILETRACKING_PFX_PASSWORD` gelesen.
-
-Nach einer HTTPS-/Portänderung muss die Anwendung neu gestartet werden.
+Zertifikate müssen auf den Smartphones als vertrauenswürdig gelten. Ein beliebiges selbstsigniertes Zertifikat genügt dafür nicht. Das Control Center ist nur lokal erreichbar. Einstellungen werden nach einem Neustart aktiv.
 
 ## SharePoint
 
-Die Modi `DISABLED`, `MANUAL`, `PACKAGE` und `AUTO_FALLBACK` können konfiguriert werden. Der integrierte Verbindungstest prüft zunächst nur Erreichbarkeit und HTTP-Status.
+Der Verbindungstest sendet nur eine HEAD-Anfrage über HTTPS, folgt keinen Redirects und ist auf explizit freigegebene Hostnamen begrenzt. Die Hostnamen werden kommasepariert in `TEILETRACKING_SHAREPOINT_ALLOWED_HOSTS` gesetzt.
 
-Direkte authentifizierte M365-Schreibzugriffe werden nicht vorgetäuscht: Dafür muss die konkrete, vom Unternehmens-Tenant freigegebene Authentifizierung feststehen (z. B. App-Registrierung/Client-ID und Consent). Bis dahin bleiben Datensätze lokal und können als Fallback-Paket exportiert werden.
+Direkte authentifizierte M365-Schreibzugriffe werden nicht vorgetäuscht: Dafür muss die konkrete, vom Unternehmens-Tenant freigegebene Authentifizierung feststehen (z. B. App-Registrierung/Client-ID und Consent). Bis dahin bleiben Datensätze lokal und können als Fallback-Paket exportiert werden. SharePoint bleibt standardmäßig deaktiviert.
+
+## Lokale Daten
+
+Die Queue und Fallback-Pakete liegen unter `%LOCALAPPDATA%\Teiletracking`. Tracking-Datensätze und aufgenommene Labelbilder können zusätzlich im Browserprofil des jeweiligen Geräts gespeichert werden; Bilder liegen in IndexedDB und werden beim Löschen des zugehörigen lokalen Datensatzes entfernt. Browserdaten- und Geräteaufbewahrung sind daher Teil der betrieblichen Lösch- und Datenschutzregelung.
 
 ## Datenintegrität
 
@@ -55,4 +59,4 @@ Queue-Schreibvorgänge erfolgen über eine temporäre Datei und anschließendes 
 
 ## Unternehmensumgebung
 
-Windows Firewall, Client-Isolation, Zertifikatsverteilung und Anwendungsfreigaben können zentral durch IT gesteuert sein. Der Host versucht nicht, diese Richtlinien zu umgehen oder Firewall-/Netzwerkeinstellungen eigenmächtig zu verändern.
+Windows Firewall, Client-Isolation, Zertifikatsverteilung und Anwendungsfreigaben können zentral durch IT gesteuert sein. Der Host versucht nicht, diese Richtlinien zu umgehen oder Firewall-/Netzwerkeinstellungen eigenmächtig zu verändern. Vor einem Unternehmenseinsatz müssen BMW Security und Betrieb den Authentifizierungs-, Netzwerk-, Zertifikats- und Updatepfad freigeben.
