@@ -51,7 +51,7 @@ Direkte authentifizierte M365-Schreibzugriffe werden nicht vorgetäuscht: Dafür
 
 ## Lokale Daten
 
-Die Queue und Fallback-Pakete liegen unter `%LOCALAPPDATA%\Teiletracking`. Tracking-Datensätze und aufgenommene Labelbilder können zusätzlich im Browserprofil des jeweiligen Geräts gespeichert werden; Bilder liegen in IndexedDB und werden beim Löschen des zugehörigen lokalen Datensatzes entfernt. Browserdaten- und Geräteaufbewahrung sind daher Teil der betrieblichen Lösch- und Datenschutzregelung.
+Die Queue und Fallback-Pakete liegen unter `%LOCALAPPDATA%\Teiletracking`. Tracking-Datensätze werden im Browserprofil gespeichert und können vertrauliche Gerätewerte enthalten. Der Datenservice enthält IndexedDB-Bildspeicherfunktionen, die die Haupt-App aktuell nicht aufruft; ein Test schützt dieses Verhalten. Browserdaten- und Geräteaufbewahrung bleiben Teil der betrieblichen Lösch- und Datenschutzregelung.
 
 ## Datenintegrität
 
