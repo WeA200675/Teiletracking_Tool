@@ -248,6 +248,12 @@ app.MapPost("/api/auth/login", async (HttpContext ctx) =>
         return Results.BadRequest(new { error = "Ungültige Anmeldedaten." });
 
     var ip = (ctx.Connection.RemoteIpAddress ?? IPAddress.None).ToString();
+    foreach (var stale in failedLogins.Where(entry =>
+        DateTimeOffset.UtcNow - entry.Value.WindowStarted > TimeSpan.FromMinutes(15))
+        .Select(entry => entry.Key).ToArray())
+        failedLogins.TryRemove(stale, out _);
+    if (!failedLogins.ContainsKey(ip) && failedLogins.Count >= 10000)
+        return Results.StatusCode(StatusCodes.Status429TooManyRequests);
     var attempts = failedLogins.GetOrAdd(ip, _ => new LoginAttemptState());
     lock (attempts)
     {
@@ -272,6 +278,11 @@ app.MapPost("/api/auth/login", async (HttpContext ctx) =>
     }
 
     lock (attempts) attempts.Failures = 0;
+    foreach (var expired in sessions.Where(entry => entry.Value <= DateTimeOffset.UtcNow)
+        .Select(entry => entry.Key).ToArray())
+        sessions.TryRemove(expired, out _);
+    if (sessions.Count >= 10000)
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
     var sessionId = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
         .TrimEnd('=').Replace('+', '-').Replace('/', '_');
     sessions[sessionId] = DateTimeOffset.UtcNow.AddHours(8);
