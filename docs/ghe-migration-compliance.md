@@ -3,21 +3,31 @@
 Stand der Prüfung: 2026-10-06  
 Quellrepository: https://github.com/WeA200675/Teiletracking_Tool  
 Geprüfter Ausgangs-Commit: `e9fbb50d56d4f5f6a44acb96a6138a3b813c8767` (Branch `main`)  
+Arbeitszweig: `codex/ghe-migration-readiness`  
 Ziel: GitHub Enterprise Server unter `ghe.bmw.de` (konkrete Zielorganisation/Repository noch durch BMW-Repository-Verantwortliche festzulegen).
 
 ## Ergebnis
 
-**Status: NICHT FREIGABEFÄHIG für produktive BMW-Daten oder produktiven Betrieb.** Diese Änderung bereitet Repository und CI auf den Transfer vor. Sie ist keine BMW-Rechts-, Datenschutz-, Informationssicherheits- oder Betriebsfreigabe.
+**Status: NICHT FREIGABEFÄHIG für produktive BMW-Daten oder produktiven Betrieb.** Die technischen Änderungen unten reduzieren konkrete Risiken im Arbeitszweig. Sie ersetzen weder ein BMW Threat Model und unabhängigen Penetrationstest noch die Rechte-, Datenschutz-, OSS-, Informationssicherheits- oder Betriebsfreigabe.
 
-Kritische technische Sperre: Der native Host bindet HTTP/HTTPS an alle lokalen Netzwerkschnittstellen. Die Browser-App und API-Endpunkte für Queue-Schreiben und Fallback-Export sind ohne Anmeldung erreichbar. Die SharePoint-Konfigurationsendpunkte sind nur auf Loopback beschränkt. Vor produktivem Einsatz muss BMW Security/Architektur einen freigegebenen Authentifizierungs-, Transport- und Netzwerk-Schutzpfad festlegen und testen. Die Freigabe allein des Git-Transfers hebt diese Sperre nicht auf.
+Die öffentliche Quelle bleibt öffentlich; die Git-Historie und bisherige Veröffentlichung können bereits eingesehene Inhalte nicht zurückholen. Der GHE-Transfer und jede produktive Nutzung bleiben gesperrt, bis BMW Repository-Verantwortliche Ziel, Sichtbarkeit, Historienbehandlung und Freigaben festlegen.
+
+### Im Arbeitszweig technisch gehärtet
+
+- Native Host-Bindung ist standardmäßig Loopback-only. Ein expliziter Remote-Zugriff bindet nur an die ausgewählte IPv4-Adresse und wird nur mit gültigem PFX, PFX-Kennwort und mindestens 20 Zeichen langem Zugriffspasswort gestartet; andernfalls bleibt der Remote-Listener geschlossen.
+- Remote-Anmeldungen verwenden begrenzte Sessions und fehlgeschlagene Versuche, HttpOnly-/Secure-/SameSite-Cookies, Same-Origin-Prüfung für schreibende Requests und eine Größenbegrenzung für HTTP-Anfragen.
+- Queue-Eingaben werden in Form, Tiefe und Größe geprüft; SharePoint-Erreichbarkeit nutzt HTTPS, folgt keinen Redirects und benötigt eine Host-Allowlist.
+- Sicherheitsheader/CSP wurden gesetzt; ein Inline-Handler der Haupt-App wurde entfernt. Die CSP erlaubt weiterhin jsDelivr als Laufzeitquelle für Fremdbibliotheken.
+- Standardkonfiguration und Betriebsdokumentation wurden an die Loopback-Grundlinie angepasst. Datenschutzdokumentation nennt jetzt korrekt die persistente Speicherung von Labelbildern in IndexedDB und die Löschgrenze.
+- Diese Härtung wurde noch nicht durch BMW Security geprüft. Der Windows-Build und die vorhandenen Tests müssen nach dem letzten Commit erneut erfolgreich laufen.
 
 ## Bereits vorbereitet
 
 - Actions in den zwei vorhandenen Workflows sind auf unveränderliche Commit-SHAs festgelegt; die ursprünglichen Versions-Tags stehen als Kommentare daneben.
-- Der native Build nutzt auf GitHub.com `upload-artifact@v4.6.2` und auf GitHub Enterprise Server `upload-artifact@v3.2.2-node20`, jeweils SHA-gepinnt. Diese Plattformtrennung ist erforderlich, weil die v4+-Reihe laut Upstream-Aktionsdokumentation derzeit nicht auf GHES unterstützt wird.
+- Der native Build nutzt auf GitHub.com `upload-artifact@v4.6.2` und auf GitHub Enterprise Server `upload-artifact@v3.2.2-node20`, jeweils SHA-gepinnt.
 - Least-privilege `contents: read` blieb für die Workflows erhalten.
-- Der Windows-Host und Build-Workflow zielen auf .NET 10 LTS. .NET 8 hätte am 10.11.2026 Supportende; .NET 10 ist laut Microsoft bis November 2028 unterstützt. [Microsoft .NET Support Policy](https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core).
-- Diese Übergabe beschreibt Daten-, Lizenz-, Sicherheits-, Betriebs- und Migrationsprüfungen und enthält eine PR-Checkliste.
+- Der Windows-Host und Build-Workflow zielen auf .NET 10 LTS. [Microsoft .NET Support Policy](https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core).
+- Diese Übergabe dokumentiert verbleibende Rechte-, Daten-, Security-, OSS-, Betriebs- und Migrationsprüfungen.
 
 ## Freigabegates – vor Import/Zusammenführung abzuschließen
 
@@ -37,14 +47,17 @@ Kritische technische Sperre: Der native Host bindet HTTP/HTTPS an alle lokalen N
 - [ ] Prüfen, ob Kamerabilder/OCR, Browserdaten, LocalStorage, logs, Fallback-Pakete oder Importe reale Werte persistieren. Keine realen Daten in Fixtures, Issues, Testreports oder CI-Artefakten.
 - [ ] Datenschutzbeauftragte/r und zuständige Informationsklassifizierung einbeziehen; erforderliche DSFA/Verarbeitungsverzeichnis-Einträge klären.
 
-### 3. Anwendungssicherheit – produktionsblockierend
+### 3. Anwendungssicherheit – BMW-Freigabe ausstehend
 
-- [ ] Authentifizierung/Autorisierung für LAN-App und mutierende APIs festlegen und umsetzen. Im aktuellen Stand kann insbesondere `POST /api/queue` ohne Anmeldung auf dem LAN Daten annehmen; `POST /api/sync/export` kann Queue-Daten ausleiten.
-- [ ] HTTPS verpflichtend und BMW-zertifikatsgestützt betreiben; Klartext-HTTP auf Netzwerkschnittstellen vermeiden. Kein Smartphone-/Produktivbetrieb über HTTP.
-- [ ] Sichere Browser-Header/CSP, CSRF-/Origin-Absicherung, Eingabegrößen/-validierung, Rate Limits und Protokollierung mit Datenschutz prüfen.
-- [ ] Netzwerkbindung, Firewall und Zugriff nur für genehmigte Clients/Segmente in BMW Testumgebung absichern.
-- [ ] Bedrohungsmodell und Sicherheitsprüfung für C# Host, Browser-App, PowerShell-Installations-/Migrationsskripte und SharePoint-Import durchführen.
-- [ ] Security-Test inkl. nicht angemeldeter Zugriffe, fremdem Origin, Queue-Missbrauch, Export, Konfigurationszugriff und Fehlerfällen als CI/Abnahme dokumentieren.
+- [x] Sicherer technischer Standard: Host nur auf Loopback; Remote-Zugriff aus; SharePoint deaktiviert.
+- [x] Remote-Listener ist bei Aktivierung an HTTPS, gültiges PFX, mindestens 20 Zeichen starkes Zugriffspasswort und ausgewählte IPv4-Adresse gebunden; fail-closed bei fehlender Voraussetzung.
+- [x] Remote-APIs verlangen Anmeldung; schreibende Requests verlangen Same-Origin. Queue-JSON, Request-Größe, Login-Fehlversuche und Session-Anzahl sind begrenzt.
+- [x] SharePoint-Test ist HTTPS-only, folgt keinen Redirects und verlangt exakte Host-Allowlist.
+- [x] Sicherheitsheader und CSP aktiv; inline Event-Handler der Haupt-App entfernt.
+- [ ] Frontend-CDN-Abhängigkeiten lokal vendoren oder anderweitig mit genehmigter Integritätsprüfung und freigegebener Bezugsquelle absichern. Derzeit erlaubt die CSP jsDelivr; dynamische Worker-/WASM-Unterressourcen sind nicht vollständig durch SRI abgesichert.
+- [ ] Unabhängige Prüfung durch BMW Security: Bedrohungsmodell, Authentifizierungs-/Autorisierungsmodell, Sitzungsspeicherung, Datenschutz, Host-Härtung, PowerShell-Skripte, Browser-App und SharePoint-Pfade.
+- [ ] Nachweisbare Security-Tests für nicht angemeldete Zugriffe, fremde Origins, CSRF, Brute Force, Queue-/Export-Missbrauch, Konfigurationszugriff und Fehlerfälle ergänzen und erfolgreich ausführen. Derzeit existiert kein vollständiger automatisierter Integrationstest für diese HTTP-Sicherheitskontrollen.
+- [ ] BMW Netzwerk-, Zertifikats-, Firewall- und Clientzugriffskonzept freigeben und in einer BMW Testumgebung verifizieren. Remoter Zugriff ist nur eine technische Option, keine Empfehlung für den BMW-Netzbetrieb.
 
 ### 4. Drittanbieter-Laufzeitcode
 
