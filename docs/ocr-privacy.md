@@ -4,9 +4,9 @@
 
 Kamerabilder, OCR-Rohtext, QR-Inhalte und echte Gerätewerte dürfen nicht als Trainingsmaterial gespeichert, exportiert oder in das Repository übernommen werden.
 
-Die Kameraaufnahme und OCR-Verarbeitung erfolgen im Browser. Die aktuell aufgenommene Bilddatei wird im Arbeitsspeicher der Seite gehalten. Wenn ein Tracking-Datensatz gespeichert wird, speichert die Haupt-App das Labelbild jedoch **dauerhaft im Browserprofil** in IndexedDB (Datenbank `teiletracking.binary.v1`, Store `labelImages`). Das Bild ist über die Datensatz-ID zugeordnet. Beim Löschen des lokalen Tracking-Datensatzes versucht die App auch das Bild zu löschen. Das Löschen kann bei Browserfehlern scheitern; eine Bestätigung der erfolgreichen Löschung wird derzeit nicht separat angezeigt.
+Die Kameraaufnahme und OCR-Verarbeitung erfolgen im Browser. Die aufgenommene Bilddatei bleibt im Arbeitsspeicher der Seite. Der Datenservice enthält Funktionen für IndexedDB-Speicherung (`teiletracking.binary.v1`, Store `labelImages`), aber die Haupt-App ruft die Speicherfunktion im aktuellen Stand nicht auf. Ein Datenschutztest prüft diese Nicht-Persistenz. Die Löschfunktion ist vorsorglich vorhanden. Bei Änderungen an diesem Verhalten muss der Datenschutztest angepasst und die Datenschutzbeschreibung erneut geprüft werden.
 
-Daher gilt: Browserdaten der App können personenbezogene oder vertrauliche Label-/Geräteinformationen enthalten. Gerätezugriff, Browserprofile, Backups und Aufbewahrungsfristen müssen organisatorisch geschützt und geregelt werden. Die Behauptung, gespeicherte Tracking-Datensätze enthielten keine Bilder, wäre für den aktuellen Code falsch.
+Tracking-Datensätze werden im Browserprofil gespeichert. Sie enthalten ausgelesene Gerätewerte und können deshalb vertrauliche Informationen enthalten. Gerätezugriff, Browserprofile, Backups und Aufbewahrungsfristen müssen organisatorisch geschützt und geregelt werden. Die OCR-Seite lädt Tesseract.js zur Laufzeit von jsDelivr; Bild- oder OCR-Daten sind damit nicht automatisch lokal, und eine vollständige lokale Laufzeitabhängigkeit ist noch ein Sicherheits-/Compliance-Gate.
 
 ## Aufnahme und Qualitätsprüfung
 
