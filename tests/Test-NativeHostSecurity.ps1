@@ -206,6 +206,16 @@ try {
     if (@($auditEvents).Count -lt 4 -or $auditEvents[0].operation -ne "DATABASE_RESTORED") {
         throw "Datenbankänderungen oder Restore wurden nicht im lokalen Verlauf protokolliert."
     }
+    $snapshots = $client.GetStringAsync("$baseUrl/api/database/snapshots").GetAwaiter().GetResult() | ConvertFrom-Json
+    if (@($snapshots).Count -lt 4) {
+        throw "Automatische Voränderungssicherungen wurden nicht erstellt."
+    }
+    $snapshotUrl = "$baseUrl/api/database/snapshots/$($snapshots[0].id)"
+    $snapshotResponse = $client.GetAsync($snapshotUrl).GetAwaiter().GetResult()
+    if ([int]$snapshotResponse.StatusCode -ne 200) {
+        throw "Automatischer Wiederherstellungspunkt konnte nicht heruntergeladen werden."
+    }
+    $snapshotResponse.Dispose()
 
     Stop-Process -Id $process.Id -Force
     $process.WaitForExit(5000) | Out-Null
