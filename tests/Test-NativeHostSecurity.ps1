@@ -5,18 +5,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 $exe = (Resolve-Path $ExecutablePath).Path
-$tempRoot = Join-Path $env:TEMP ("TeiletrackingSecurityTest-" + [guid]::NewGuid().ToString("N"))
-$localData = Join-Path $tempRoot "LocalAppData"
-New-Item -ItemType Directory -Path $localData -Force | Out-Null
-
-$previousLocalAppData = $env:LOCALAPPDATA
-$env:LOCALAPPDATA = $localData
+$localData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+$stateDirectory = Join-Path $localData "Teiletracking"
+if (Test-Path $stateDirectory) {
+    throw "Test benötigt ein frisches Windows-Benutzerprofil ohne vorhandenes Teiletracking-Verzeichnis."
+}
 $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
 $listener.Start()
 $port = ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
 $listener.Stop()
 
-$configDirectory = Join-Path $localData "Teiletracking"
+$configDirectory = $stateDirectory
 New-Item -ItemType Directory -Path $configDirectory -Force | Out-Null
 $defaultConfigPath = Join-Path (Split-Path $exe) "appsettings.default.json"
 $config = Get-Content -LiteralPath $defaultConfigPath -Raw | ConvertFrom-Json
@@ -88,6 +87,5 @@ finally {
         $process.WaitForExit(5000) | Out-Null
     }
     $client.Dispose()
-    $env:LOCALAPPDATA = $previousLocalAppData
-    Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $stateDirectory -Recurse -Force -ErrorAction SilentlyContinue
 }
