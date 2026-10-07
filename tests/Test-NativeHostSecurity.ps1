@@ -177,7 +177,7 @@ try {
         [System.Net.Http.HttpMethod]::Put, "$baseUrl/api/database/tracking")
     $clearRequest.Headers.Add("Origin", $baseUrl)
     $clearRequest.Content = [System.Net.Http.StringContent]::new(
-        '{"revision":1,"records":[]}', [System.Text.Encoding]::UTF8, "application/json")
+        '{"revision":2,"records":[]}', [System.Text.Encoding]::UTF8, "application/json")
     $clearResponse = $client.SendAsync($clearRequest).GetAwaiter().GetResult()
     if ([int]$clearResponse.StatusCode -ne 200) {
         throw "Testvorbereitung konnte Trackingdaten nicht leeren (HTTP $([int]$clearResponse.StatusCode))."
