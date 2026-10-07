@@ -5,7 +5,7 @@ Der Host liefert die Weboberfläche aus und speichert Anwendungsdaten lokal in e
 ## Aktueller Funktionsumfang
 
 - selbstenthaltene Windows-x64-Anwendung mit integriertem Kestrel-Webserver
-- Datenbankdatei unter `%LOCALAPPDATA%\\Teiletracking\\teiletracking.db`
+- Datenbankdatei unter `%LOCALAPPDATA%\Teiletracking\teiletracking.db`
 - getrennte Tabellen für Anwendungszustand und Tracking-Datensätze
 - transaktionales Speichern und Revisionsprüfung gegen parallele oder veraltete Änderungen
 - vorhandene Erfassungs-, Such-, Filter-, Stammdaten-, Import- und Exportfunktionen der Oberfläche
@@ -38,7 +38,7 @@ Beim Speichern prüft die API eine Revisionsnummer und weist veraltete Schreibst
 
 ## Sicherung und Wiederherstellung
 
-Vor jeder schreibenden Datenbankoperation legt der Host einen unverschlüsselten Wiederherstellungspunkt in `%LOCALAPPDATA%\\Teiletracking\\automatic-backups` an. Die letzten sieben Kopien bleiben lokal erhalten. Der Control Center-Bereich ermöglicht den Download. Weil die Kopien auf demselben Datenträger liegen, sind sie nur für lokale Fehler und versehentliche Änderungen geeignet, nicht für Geräteverlust oder Katastrophenwiederherstellung.
+Vor jeder schreibenden Datenbankoperation legt der Host einen unverschlüsselten Wiederherstellungspunkt in `%LOCALAPPDATA%\Teiletracking\automatic-backups` an. Die letzten sieben Kopien bleiben lokal erhalten. Der Control Center-Bereich ermöglicht den Download. Weil die Kopien auf demselben Datenträger liegen, sind sie nur für lokale Fehler und versehentliche Änderungen geeignet, nicht für Geräteverlust oder Katastrophenwiederherstellung.
 
 Das manuelle Backup ist ein passwortgeschütztes Paket mit AES-256-GCM und PBKDF2-SHA-256 (310.000 Iterationen). Mindestens 16 Zeichen Passwort sind erforderlich. Passwort und Paket müssen getrennt verwahrt werden; ohne Passwort ist keine Wiederherstellung möglich. Die Prüfsumme erkennt zufällige Beschädigung, ist aber keine Signatur und kein Herkunftsnachweis. Eine Klartext-Notfallsicherung wird als unverschlüsselt markiert.
 
