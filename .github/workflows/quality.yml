@@ -22,6 +22,8 @@ jobs:
           done
       - name: Run OCR privacy tests
         run: node tests/Test-OcrPrivacy.js
+      - name: Run frontend supply-chain guard
+        run: node tests/Test-FrontendSupplyChain.js
 
   powershell:
     runs-on: ubuntu-latest
