@@ -4,7 +4,7 @@
     const FORMAT = "TeiletrackingEncryptedBackup";
     const VERSION = 1;
     const ITERATIONS = 310000;
-    const MAX_CIPHERTEXT_BYTES = 16 * 1024 * 1024;
+    const MAX_CIPHERTEXT_BYTES = 24 * 1024 * 1024;
 
     function toBase64(bytes) {
         let binary = "";
