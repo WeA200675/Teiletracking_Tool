@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -134,6 +135,7 @@ builder.WebHost.ConfigureKestrel(k =>
 });
 
 builder.Services.AddSingleton(new RuntimeState());
+builder.Services.AddSingleton(new DatabaseStore(Path.Combine(stateDir, "teiletracking.db")));
 builder.Services.AddHostedService<NetworkMonitor>();
 builder.Services.AddHostedService<SyncWorker>();
 var app = builder.Build();
@@ -324,6 +326,39 @@ app.MapGet("/api/status", (RuntimeState state) =>
         synced = q.Count(x => x.Status == "SYNCED"),
         lastNetworkChange = state.LastNetworkChange
     });
+});
+app.MapGet("/api/database/master-data", (DatabaseStore database) =>
+    Results.Json(database.LoadMasterData()));
+app.MapPut("/api/database/master-data", async (HttpContext c, DatabaseStore database) =>
+{
+    JsonNode? data;
+    try { data = await JsonNode.ParseAsync(c.Request.Body, documentOptions: new JsonDocumentOptions { MaxDepth = 16 }, cancellationToken: c.RequestAborted); }
+    catch (JsonException) { return Results.BadRequest(new { error = "Ungültiges JSON." }); }
+    if (data is not JsonObject || !IsBoundedJson(data))
+        return Results.BadRequest(new { error = "Stammdatenformat oder -größe ist unzulässig." });
+    database.SaveMasterData(data);
+    return Results.Ok(new { saved = true });
+});
+app.MapGet("/api/database/tracking", (DatabaseStore database) =>
+    Results.Json(new { records = database.LoadTrackingData(), revision = database.Revision }));
+app.MapPut("/api/database/tracking", async (HttpContext c, DatabaseStore database) =>
+{
+    JsonNode? data;
+    try { data = await JsonNode.ParseAsync(c.Request.Body, documentOptions: new JsonDocumentOptions { MaxDepth = 16 }, cancellationToken: c.RequestAborted); }
+    catch (JsonException) { return Results.BadRequest(new { error = "Ungültiges JSON." }); }
+    if (data is not JsonObject obj || obj["records"] is not JsonArray records ||
+        records.Count > 1000 || !IsBoundedJson(data))
+        return Results.BadRequest(new { error = "Datensatzformat oder -größe ist unzulässig." });
+    var expectedRevision = obj["revision"]?.GetValue<long>();
+    if (expectedRevision is null || expectedRevision.Value != database.Revision)
+        return Results.Conflict(new { code = "DATABASE-REVISION-CONFLICT", revision = database.Revision, error = "Die Datenbank wurde zwischenzeitlich geändert. Bitte neu laden." });
+    database.SaveTrackingData(records);
+    return Results.Ok(new { saved = records.Count, revision = database.Revision });
+});
+app.MapDelete("/api/database/tracking", (DatabaseStore database) =>
+{
+    database.ClearTrackingData();
+    return Results.Ok(new { deleted = true, revision = database.Revision });
 });
 app.MapGet("/api/interfaces", () => Results.Ok(Interfaces()));
 app.MapGet("/api/config", (HttpContext c) =>
@@ -625,4 +660,121 @@ async function exportQueue(){result.textContent=JSON.stringify(await(await fetch
 function esc(x){return String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}load();
 </script></body></html>
 """;
+}
+
+sealed class DatabaseStore
+{
+    private readonly string _connectionString;
+    private readonly object _gate = new();
+    public DatabaseStore(string path)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        _connectionString = new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWriteCreate, Cache = SqliteCacheMode.Shared }.ToString();
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = """
+            PRAGMA journal_mode=WAL;
+            PRAGMA foreign_keys=ON;
+            CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS tracking_records (local_id TEXT PRIMARY KEY, record_json TEXT NOT NULL, updated_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS import_batches (batch_id TEXT PRIMARY KEY, imported_at TEXT NOT NULL, imported_count INTEGER NOT NULL);
+            INSERT OR IGNORE INTO app_state(key, value) VALUES ('master_data', '{"Derivate":[],"IStufen":[],"AktivOverrides":{"Derivate":{},"IStufen":{}}}');
+            INSERT OR IGNORE INTO app_state(key, value) VALUES ('revision', '0');
+            """;
+        command.ExecuteNonQuery();
+    }
+    private SqliteConnection Open()
+    {
+        var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA busy_timeout=5000;";
+        command.ExecuteNonQuery();
+        return connection;
+    }
+    public long Revision
+    {
+        get
+        {
+            using var connection = Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT value FROM app_state WHERE key='revision'";
+            return long.Parse((string)command.ExecuteScalar()!);
+        }
+    }
+    public JsonNode LoadMasterData()
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT value FROM app_state WHERE key='master_data'";
+        return JsonNode.Parse((string)command.ExecuteScalar()!)!;
+    }
+    public JsonArray LoadTrackingData()
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT record_json FROM tracking_records ORDER BY updated_at, local_id";
+        using var reader = command.ExecuteReader();
+        var records = new JsonArray();
+        while (reader.Read()) records.Add(JsonNode.Parse(reader.GetString(0)));
+        return records;
+    }
+    public void SaveMasterData(JsonNode data)
+    {
+        lock (_gate)
+        {
+            using var connection = Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE app_state SET value=$value WHERE key='master_data'";
+            command.Parameters.AddWithValue("$value", data.ToJsonString());
+            command.ExecuteNonQuery();
+        }
+    }
+    public void SaveTrackingData(JsonArray records)
+    {
+        lock (_gate)
+        {
+            using var connection = Open();
+            using var transaction = connection.BeginTransaction();
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "DELETE FROM tracking_records";
+                command.ExecuteNonQuery();
+            }
+            foreach (var recordNode in records)
+            {
+                if (recordNode is not JsonObject record) throw new InvalidDataException("Datensatz muss ein JSON-Objekt sein.");
+                var id = record["LocalId"]?.GetValue<string>();
+                if (string.IsNullOrWhiteSpace(id)) { id = Guid.NewGuid().ToString("D"); record["LocalId"] = id; }
+                using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = "INSERT INTO tracking_records(local_id, record_json, updated_at) VALUES ($id, $json, $updated)";
+                command.Parameters.AddWithValue("$id", id);
+                command.Parameters.AddWithValue("$json", record.ToJsonString());
+                command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
+                command.ExecuteNonQuery();
+            }
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "UPDATE app_state SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT) WHERE key='revision'";
+                command.ExecuteNonQuery();
+            }
+            transaction.Commit();
+        }
+    }
+    public void ClearTrackingData()
+    {
+        lock (_gate)
+        {
+            using var connection = Open();
+            using var transaction = connection.BeginTransaction();
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "DELETE FROM tracking_records; UPDATE app_state SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT) WHERE key='revision'";
+            command.ExecuteNonQuery();
+            transaction.Commit();
+        }
+    }
 }
