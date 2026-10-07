@@ -12,7 +12,7 @@ on:
     paths:
       - 'native-host/**'
       - 'prototype/**'
-      - 'tests/data/**'
+      - 'tests/**'
       - '.github/workflows/native-windows.yml'
 jobs:
   build:
