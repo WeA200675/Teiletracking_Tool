@@ -313,7 +313,7 @@ app.MapPost("/api/auth/logout", (HttpContext ctx) =>
     });
     return Results.Redirect("/login");
 });
-app.MapGet("/health", (RuntimeState state) => Results.Ok(new { status = "ok", version = "0.4.1", startedAt = state.StartedAt }));
+app.MapGet("/health", (RuntimeState state) => Results.Ok(new { status = "ok", version = "0.5.0", startedAt = state.StartedAt }));
 app.MapGet("/api/status", (RuntimeState state, DatabaseStore database) =>
 {
     var cfg = LoadConfig();
@@ -321,7 +321,7 @@ app.MapGet("/api/status", (RuntimeState state, DatabaseStore database) =>
     var q = QueueStore.Load(queuePath);
     var currentPort = cfg["network"]?["port"]?.GetValue<int>() ?? 8000;
     return Results.Ok(new {
-        version = "0.4.1",
+        version = "0.5.0",
         setupCompleted = cfg["setupCompleted"]?.GetValue<bool>() ?? false,
         remoteAccessEnabled = remoteAccessAvailable,
         activeIp = ip,
@@ -491,7 +491,7 @@ try
 {
     var cfg = LoadConfig();
     var ip = FindAddress(cfg);
-    Log("INFO", "APP-START-001", $"Teiletracking 0.4.0 gestartet; IP={ip ?? "keine"}; Port={port}");
+    Log("INFO", "APP-START-001", $"Teiletracking 0.5.0 gestartet; IP={ip ?? "keine"}; Port={port}");
     var url = "http://127.0.0.1:" + port + ((cfg["setupCompleted"]?.GetValue<bool>() ?? false) ? "/control-center" : "/control-center");
     try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
     await app.RunAsync();
