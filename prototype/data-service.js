@@ -699,7 +699,12 @@
     async function createDatabaseProvider() {
         let databaseRevision = 0;
         const statusResponse = await fetch("/api/status", { cache: "no-store" });
-        if (!statusResponse.ok) throw new Error("Lokaler Datenbankdienst ist nicht verfügbar.");
+        if (statusResponse.status === 404) {
+            const unavailable = new Error("Lokaler Datenbankdienst ist nicht vorhanden.");
+            unavailable.code = "DATABASE_API_NOT_FOUND";
+            throw unavailable;
+        }
+        if (!statusResponse.ok) throw new Error("Lokaler Datenbankdienst antwortet fehlerhaft (HTTP " + statusResponse.status + ").");
         await statusResponse.json();
         return Object.freeze({
             info: Object.freeze({
@@ -879,7 +884,8 @@
             try {
                 activeProvider = await createDatabaseProvider();
             }
-            catch {
+            catch (error) {
+                if (!error || error.code !== "DATABASE_API_NOT_FOUND") throw error;
                 activeProvider = createProvider(activeConfig);
             }
         }
