@@ -125,6 +125,73 @@ try {
     $staleRequest.Dispose()
     $staleResponse.Dispose()
 
+    $backupText = $client.GetStringAsync("$baseUrl/api/database/backup").GetAwaiter().GetResult()
+    $backupEnvelope = $backupText | ConvertFrom-Json -AsHashtable
+    $previewRequest = [System.Net.Http.HttpRequestMessage]::new(
+        [System.Net.Http.HttpMethod]::Post, "$baseUrl/api/database/restore/preview")
+    $previewRequest.Headers.Add("Origin", $baseUrl)
+    $previewRequest.Content = [System.Net.Http.StringContent]::new(
+        $backupText, [System.Text.Encoding]::UTF8, "application/json")
+    $previewResponse = $client.SendAsync($previewRequest).GetAwaiter().GetResult()
+    if ([int]$previewResponse.StatusCode -ne 200) {
+        throw "Gültige Datenbanksicherung konnte nicht geprüft werden (HTTP $([int]$previewResponse.StatusCode))."
+    }
+    $preview = $previewResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+    if ($preview.trackingRecords -ne 2 -or $preview.currentTrackingRecords -ne 2) {
+        throw "Sicherungsvorschau meldet unerwartete Datensatzanzahlen."
+    }
+    $previewRequest.Dispose()
+    $previewResponse.Dispose()
+
+    $badBackup = $backupEnvelope.Clone()
+    $badBackup["sha256"] = "0000000000000000000000000000000000000000000000000000000000000000"
+    $badPreviewRequest = [System.Net.Http.HttpRequestMessage]::new(
+        [System.Net.Http.HttpMethod]::Post, "$baseUrl/api/database/restore/preview")
+    $badPreviewRequest.Headers.Add("Origin", $baseUrl)
+    $badPreviewRequest.Content = [System.Net.Http.StringContent]::new(
+        ($badBackup | ConvertTo-Json -Depth 20 -Compress),
+        [System.Text.Encoding]::UTF8, "application/json")
+    $badPreviewResponse = $client.SendAsync($badPreviewRequest).GetAwaiter().GetResult()
+    if ([int]$badPreviewResponse.StatusCode -ne 400) {
+        throw "Beschädigtes oder manipuliertes Backup wurde nicht abgewiesen."
+    }
+    $badPreviewRequest.Dispose()
+    $badPreviewResponse.Dispose()
+
+    $clearRequest = [System.Net.Http.HttpRequestMessage]::new(
+        [System.Net.Http.HttpMethod]::Put, "$baseUrl/api/database/tracking")
+    $clearRequest.Headers.Add("Origin", $baseUrl)
+    $clearRequest.Content = [System.Net.Http.StringContent]::new(
+        '{"revision":1,"records":[]}', [System.Text.Encoding]::UTF8, "application/json")
+    $clearResponse = $client.SendAsync($clearRequest).GetAwaiter().GetResult()
+    if ([int]$clearResponse.StatusCode -ne 200) {
+        throw "Testvorbereitung konnte Trackingdaten nicht leeren (HTTP $([int]$clearResponse.StatusCode))."
+    }
+    $clearRequest.Dispose()
+    $clearResponse.Dispose()
+
+    $restoreBody = @{ backup = $backupEnvelope; revision = 2 } | ConvertTo-Json -Depth 20 -Compress
+    $restoreRequest = [System.Net.Http.HttpRequestMessage]::new(
+        [System.Net.Http.HttpMethod]::Post, "$baseUrl/api/database/restore")
+    $restoreRequest.Headers.Add("Origin", $baseUrl)
+    $restoreRequest.Content = [System.Net.Http.StringContent]::new(
+        $restoreBody, [System.Text.Encoding]::UTF8, "application/json")
+    $restoreResponse = $client.SendAsync($restoreRequest).GetAwaiter().GetResult()
+    if ([int]$restoreResponse.StatusCode -ne 200) {
+        throw "Datenbank konnte aus Sicherung nicht wiederhergestellt werden (HTTP $([int]$restoreResponse.StatusCode))."
+    }
+    $restored = $restoreResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+    if ($restored.trackingRecords -ne 2 -or $restored.revision -ne 3) {
+        throw "Restore lieferte eine unerwartete Datensatzanzahl oder Revision."
+    }
+    $restoreRequest.Dispose()
+    $restoreResponse.Dispose()
+
+    $auditEvents = $client.GetStringAsync("$baseUrl/api/database/audit").GetAwaiter().GetResult() | ConvertFrom-Json
+    if (@($auditEvents).Count -lt 3 -or $auditEvents[0].operation -ne "DATABASE_RESTORED") {
+        throw "Datenbankänderungen oder Restore wurden nicht im lokalen Verlauf protokolliert."
+    }
+
     Stop-Process -Id $process.Id -Force
     $process.WaitForExit(5000) | Out-Null
     $process = $null
@@ -156,7 +223,7 @@ try {
         throw "Remote-Zugriff blieb trotz fehlendem Zertifikat aktiv."
     }
     $persistedDb = $client.GetStringAsync("$baseUrl/api/database/tracking").GetAwaiter().GetResult() | ConvertFrom-Json
-    if ($persistedDb.revision -ne 1 -or @($persistedDb.records).Count -ne 2) {
+    if ($persistedDb.revision -ne 3 -or @($persistedDb.records).Count -ne 2) {
         throw "SQLite-Datenbank blieb nach Host-Neustart nicht erhalten."
     }
     $listeners = Get-NetTCPConnection -State Listen -OwningProcess $process.Id -ErrorAction SilentlyContinue
