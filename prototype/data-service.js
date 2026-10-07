@@ -736,7 +736,9 @@
                     body: JSON.stringify(localMasterData)
                 });
                 if (!response.ok) throw new Error("Stammdaten konnten nicht gespeichert werden (HTTP " + response.status + ").");
-                return response.json();
+                const result = await response.json();
+                databaseRevision = result.revision;
+                return result;
             },
             async saveTrackingData(records) {
                 const response = await fetch("/api/database/tracking", {
