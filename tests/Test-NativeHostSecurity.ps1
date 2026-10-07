@@ -1,10 +1,9 @@
-$ErrorActionPreference = "Stop"
-
 param(
     [Parameter(Mandatory = $true)]
     [string] $ExecutablePath
 )
 
+$ErrorActionPreference = "Stop"
 $exe = (Resolve-Path $ExecutablePath).Path
 $tempRoot = Join-Path $env:TEMP ("TeiletrackingSecurityTest-" + [guid]::NewGuid().ToString("N"))
 $localData = Join-Path $tempRoot "LocalAppData"
@@ -16,6 +15,14 @@ $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopba
 $listener.Start()
 $port = ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
 $listener.Stop()
+
+$configDirectory = Join-Path $localData "Teiletracking"
+New-Item -ItemType Directory -Path $configDirectory -Force | Out-Null
+$defaultConfigPath = Join-Path (Split-Path $exe) "appsettings.default.json"
+$config = Get-Content -LiteralPath $defaultConfigPath -Raw | ConvertFrom-Json
+$config.network.port = $port
+$config.network.remoteAccessEnabled = $false
+$config | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $configDirectory "config.json") -Encoding utf8
 
 $process = $null
 $client = [System.Net.Http.HttpClient]::new()
