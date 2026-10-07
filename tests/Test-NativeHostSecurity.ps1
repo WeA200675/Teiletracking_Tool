@@ -88,6 +88,43 @@ try {
         throw "Gleich-originäre Queue-Anfrage funktioniert nicht (HTTP $([int]$sameOriginResponse.StatusCode))."
     }
 
+    $dbBefore = $client.GetStringAsync("$baseUrl/api/database/tracking").GetAwaiter().GetResult() | ConvertFrom-Json
+    if ($dbBefore.revision -ne 0 -or @($dbBefore.records).Count -ne 0) {
+        throw "Neue lokale Datenbank startet nicht mit dem erwarteten leeren Ausgangszustand."
+    }
+    $records = @(
+        @{ LocalId = "instance-1"; PartNumber = "TEST-PN"; SerialNumber = "TEST-SN"; AssignmentKey = "same-assignment" },
+        @{ LocalId = "instance-2"; PartNumber = "TEST-PN"; SerialNumber = "TEST-SN"; AssignmentKey = "same-assignment" }
+    ) | ConvertTo-Json -Compress
+    $dbRequest = [System.Net.Http.HttpRequestMessage]::new(
+        [System.Net.Http.HttpMethod]::Put, "$baseUrl/api/database/tracking")
+    $dbRequest.Headers.Add("Origin", $baseUrl)
+    $dbRequest.Content = [System.Net.Http.StringContent]::new(
+        ('{"revision":0,"records":' + $records + '}'),
+        [System.Text.Encoding]::UTF8, "application/json")
+    $dbResponse = $client.SendAsync($dbRequest).GetAwaiter().GetResult()
+    if ([int]$dbResponse.StatusCode -ne 200) {
+        throw "SQLite-Trackingdaten konnten nicht gespeichert werden (HTTP $([int]$dbResponse.StatusCode))."
+    }
+    $dbSave = $dbResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+    if ($dbSave.revision -ne 1 -or $dbSave.saved -ne 2) {
+        throw "SQLite-Speichern lieferte eine unerwartete Revision oder Anzahl."
+    }
+    $dbRequest.Dispose()
+    $dbResponse.Dispose()
+
+    $staleRequest = [System.Net.Http.HttpRequestMessage]::new(
+        [System.Net.Http.HttpMethod]::Put, "$baseUrl/api/database/tracking")
+    $staleRequest.Headers.Add("Origin", $baseUrl)
+    $staleRequest.Content = [System.Net.Http.StringContent]::new(
+        '{"revision":0,"records":[]}', [System.Text.Encoding]::UTF8, "application/json")
+    $staleResponse = $client.SendAsync($staleRequest).GetAwaiter().GetResult()
+    if ([int]$staleResponse.StatusCode -ne 409) {
+        throw "Veraltete Datenbankrevision wurde nicht mit HTTP 409 zurückgewiesen."
+    }
+    $staleRequest.Dispose()
+    $staleResponse.Dispose()
+
     Stop-Process -Id $process.Id -Force
     $process.WaitForExit(5000) | Out-Null
     $process = $null
@@ -117,6 +154,10 @@ try {
     if (-not $ready) { throw "Host mit ungültigem Zertifikat wurde nicht bereit." }
     if ($status.remoteAccessEnabled -ne $false) {
         throw "Remote-Zugriff blieb trotz fehlendem Zertifikat aktiv."
+    }
+    $persistedDb = $client.GetStringAsync("$baseUrl/api/database/tracking").GetAwaiter().GetResult() | ConvertFrom-Json
+    if ($persistedDb.revision -ne 1 -or @($persistedDb.records).Count -ne 2) {
+        throw "SQLite-Datenbank blieb nach Host-Neustart nicht erhalten."
     }
     $listeners = Get-NetTCPConnection -State Listen -OwningProcess $process.Id -ErrorAction SilentlyContinue
     $nonLoopback = @($listeners | Where-Object {
