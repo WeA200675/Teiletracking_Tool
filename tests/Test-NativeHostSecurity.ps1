@@ -49,6 +49,13 @@ try {
     if ($status.remoteAccessEnabled -ne $false) {
         throw "Remote-Zugriff ist in der Standardkonfiguration nicht deaktiviert."
     }
+    foreach ($asset in @("/prototype/vendor/jsQR-1.4.0.js", "/prototype/vendor/jszip-3.10.1.min.js")) {
+        $assetResponse = $client.GetAsync("$baseUrl$asset").GetAwaiter().GetResult()
+        if ([int]$assetResponse.StatusCode -ne 200) {
+            throw "Lokale Browser-Abhängigkeit fehlt im veröffentlichten Host: $asset (HTTP $([int]$assetResponse.StatusCode))."
+        }
+        $assetResponse.Dispose()
+    }
 
     $listeners = Get-NetTCPConnection -State Listen -OwningProcess $process.Id -ErrorAction SilentlyContinue
     if (-not $listeners) { throw "Kein Listener des Host-Prozesses gefunden." }
