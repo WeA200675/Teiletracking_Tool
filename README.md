@@ -1,16 +1,24 @@
 # Teiletracking Tool
 
-Prototyp für Teiletracking, QR-/OCR-Erfassung, lokale Queue und SharePoint-Migrationswerkzeuge.
+Lokale Anwendung zur Erfassung und Verwaltung von Teilen und Steuergeräten. Die bestehende Oberfläche unterstützt QR-/OCR-Erfassung, Prüfung, Stammdatenpflege, Tracking-Historie sowie JSON-/CSV-Import und -Export.
 
-> **Betriebsstatus:** Nicht für produktive BMW-Daten freigegeben. Der native Host ist standardmäßig Loopback-only; Netzwerkzugriff erfordert eine explizite Aktivierung mit HTTPS-Zertifikat und starkem Kennwort. Vor einem BMW-Einsatz müssen Rechte-, Datenschutz-, Security-, OSS- und Betriebsfreigaben aus [docs/ghe-migration-compliance.md](docs/ghe-migration-compliance.md) abgeschlossen sein.
+## Aktueller Stand
 
-## Lokaler Einstieg
+Der native Windows-Host stellt eine lokale SQLite-Datenbank bereit. Die Datenbank liegt im Benutzerprofil unter `%LOCALAPPDATA%\Teiletracking\teiletracking.db`. Die Oberfläche kommuniziert mit ihr über die lokale HTTP-API des Hosts. Wird die Oberfläche ohne Host als statische Seite geöffnet, bleibt der bisherige Browser-Speicher aktiv.
 
-- Webprototyp: `prototype/index.html`
-- Windows-Host und Build: [native-host/README.md](native-host/README.md)
-- PowerShell-/Control-Center-Ablauf: [control-center/README.md](control-center/README.md)
-- OCR-Datenschutzbeschreibung: [docs/ocr-privacy.md](docs/ocr-privacy.md)
-- GHE-/Compliance-Übergabe: [docs/ghe-migration-compliance.md](docs/ghe-migration-compliance.md)
+Der Host bindet standardmäßig ausschließlich an `127.0.0.1`. Netzwerkzugriff ist abgeschaltet. Das WLAN- oder Domänennetz wird nicht automatisch verwendet. Der aktuelle Datenbankweg ist für lokale Erprobung vorgesehen; er ist noch keine Freigabe für den produktiven Einsatz oder für BMW-Daten.
+
+## Start und Entwicklung
+
+- Weboberfläche: `prototype/index.html`
+- Windows-Host, lokaler Datenpfad und Build: [native-host/README.md](native-host/README.md)
+- OCR-Datenschutz und Bildverarbeitung: [docs/ocr-privacy.md](docs/ocr-privacy.md)
+
+Windows-Build:
+
+```text
+dotnet publish native-host/Teiletracking.Host.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist
+```
 
 Tests:
 
@@ -22,6 +30,12 @@ Tests:
 node tests/Test-OcrPrivacy.js
 ```
 
-## GHE-Migration
+## Datenübernahme
 
-Workflows sind für GitHub.com und GitHub Enterprise Server vorbereitet; der native Windows Build wählt die passende Artifact-Action anhand von `github.server_url`. Für den Zielbetrieb gelten die GHE-Admin-Regeln und Freigabegates in der Übergabedokumentation. Eine konkrete Zielorganisation und ein Zielrepository sind dort noch durch BMW Repository-Verantwortliche festzulegen.
+Vorhandene Datensätze können über die Importfunktion der Oberfläche als JSON eingelesen werden. Vor einer Übernahme sollte ein Export als Sicherung erstellt und der Import anhand der angezeigten Datensätze kontrolliert werden. Die Anwendung löscht die Importdatei nicht.
+
+## Compliance und Daten
+
+Dieses GitHub-Repository ist öffentlich. Deshalb dürfen weder echte Teile-/Fahrzeugdaten, personenbezogene Daten, Datenbankdateien, Migrationspakete, Screenshots mit Echtdaten noch Zugangsdaten oder Zertifikate eingecheckt werden. Nur synthetische Beispieldaten gehören in Tests.
+
+Vor einem produktiven Einsatz müssen mindestens Datenklassifizierung und zulässiger Zweck, Berechtigungen, Aufbewahrung/Löschung, Verschlüsselung und Wiederherstellung, Updateprozess, Abhängigkeiten sowie erforderliche Datenschutz- und IT-Security-Freigaben geklärt sein. Es gibt derzeit keine zentrale Benutzer-/Rollenverwaltung, keinen revisionssicheren Änderungsnachweis und keine automatisierte Datenbanksicherung. Netzwerkzugriff bleibt deaktiviert, bis eine genehmigte Architektur und Konfiguration vorliegt.
