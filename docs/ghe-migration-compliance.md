@@ -56,7 +56,7 @@ Die öffentliche Quelle bleibt öffentlich; die Git-Historie und bisherige Verö
 - [x] Sicherheitsheader und CSP aktiv; inline Event-Handler der Haupt-App entfernt.
 - [ ] Frontend-CDN-Abhängigkeiten lokal vendoren oder anderweitig mit genehmigter Integritätsprüfung und freigegebener Bezugsquelle absichern. Derzeit erlaubt die CSP jsDelivr; dynamische Worker-/WASM-Unterressourcen sind nicht vollständig durch SRI abgesichert.
 - [ ] Unabhängige Prüfung durch BMW Security: Bedrohungsmodell, Authentifizierungs-/Autorisierungsmodell, Sitzungsspeicherung, Datenschutz, Host-Härtung, PowerShell-Skripte, Browser-App und SharePoint-Pfade.
-- [x] Windows-CI-Smoke-Test startet den Host mit frischer Standardkonfiguration und prüft Loopback-only, deaktivierten Remote-Zugriff, abgewiesenen Fremd-Origin-POST sowie einen erfolgreichen gleich-originären Queue-Aufruf.
+- [x] Windows-CI-Smoke-Test startet den Host mit frischer Konfiguration und prüft Loopback-only, standardmäßig deaktivierten Remote-Zugriff, abgewiesenen Fremd-Origin-POST, erfolgreichen gleich-originären Queue-Aufruf und fail-closed Verhalten bei angefordertem Remote-Zugriff ohne Zertifikat.
 - [ ] Umfassende Remote-Auth- und Security-Integrationstests ergänzen: Login/Session/Logout, Rate Limit, abgelaufene Sessions, zu große/fehlerhafte JSON-Daten, Queue- und Exportpfade, Konfigurationszugriff und Fehlerfälle. Der vorhandene Smoke-Test deckt diese Fälle nicht ab.
 - [ ] BMW Netzwerk-, Zertifikats-, Firewall- und Clientzugriffskonzept freigeben und in einer BMW Testumgebung verifizieren. Remoter Zugriff ist nur eine technische Option, keine Empfehlung für den BMW-Netzbetrieb.
 
