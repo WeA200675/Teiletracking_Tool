@@ -330,6 +330,7 @@ app.MapGet("/api/status", (RuntimeState state, DatabaseStore database) =>
         storage = "SQLITE",
         trackingRecords = database.TrackingCount,
         databaseRevision = database.Revision,
+        automaticSnapshots = database.AutomaticBackupCount,
         pending = q.Count(x => x.Status is "PENDING" or "RETRY_WAIT"),
         errors = q.Count(x => x.Status is "ERROR" or "CONFLICT"),
         synced = q.Count(x => x.Status == "SYNCED"),
@@ -375,6 +376,16 @@ app.MapDelete("/api/database/tracking", (DatabaseStore database) =>
     Results.Ok(new { deleted = true, revision = database.ClearTrackingData() }));
 app.MapGet("/api/database/audit", (DatabaseStore database) =>
     Results.Json(database.LoadRecentAudit()));
+app.MapGet("/api/database/snapshots", (DatabaseStore database) =>
+    Results.Json(database.LoadAutomaticBackups()));
+app.MapGet("/api/database/snapshots/{id}", (HttpContext c, string id, DatabaseStore database) =>
+{
+    if (!Guid.TryParseExact(id, "N", out _)) return Results.NotFound();
+    var bytes = database.ReadAutomaticBackup(id);
+    if (bytes is null) return Results.NotFound();
+    c.Response.Headers["Cache-Control"] = "no-store";
+    return Results.File(bytes, "application/json; charset=utf-8", "teiletracking-auto-backup-" + id + ".json");
+});
 app.MapGet("/api/database/backup", (HttpContext c, DatabaseStore database) =>
 {
     c.Response.Headers["Cache-Control"] = "no-store";
@@ -393,7 +404,6 @@ app.MapPost("/api/database/restore/preview", async (HttpContext c, DatabaseStore
         valid = true,
         schemaVersion = payload["schemaVersion"]!.GetValue<int>(),
         trackingRecords = records.Count,
-        currentTrackingRecords = database.TrackingCount,
         derivate = (payload["masterData"]?["Derivate"] as JsonArray)?.Count ?? 0,
         iStufen = (payload["masterData"]?["IStufen"] as JsonArray)?.Count ?? 0,
         currentRevision = database.Revision
@@ -677,6 +687,8 @@ code{overflow-wrap:anywhere}li{margin:6px 0}@media(max-width:600px){main{padding
 <input id="backupFile" type="file" accept=".ttbackup,.json,application/json"></div>
 <button id="restoreButton" class="danger" type="button">Backup prüfen und wiederherstellen</button>
 <p class="warn">Eine Wiederherstellung ersetzt den aktuellen Datenbankinhalt vollständig. Erstellt vorab eine verschlüsselte Sicherung und kontrolliert die Vorschau.</p>
+<p>Automatische Voränderungskopien (maximal 7, unverschlüsselt und nur auf diesem PC):</p>
+<div id="automaticSnapshots" class="muted">Lade lokale Wiederherstellungspunkte …</div>
 <p id="message" aria-live="polite"></p>
 </section>
 
@@ -707,8 +719,20 @@ async function requestJson(url, options) {
 async function loadStatus() {
     const s=await requestJson("/api/status");
     byId("status").replaceChildren();
-    const cards=[["Version",s.version],["Datensätze",s.trackingRecords],["Datenbankrevision",s.databaseRevision],["Zugriff","Nur dieser PC"]];
+    const cards=[["Version",s.version],["Datensätze",s.trackingRecords],["Datenbankrevision",s.databaseRevision],["Lokale Sicherungen",s.automaticSnapshots],["Zugriff","Nur dieser PC"]];
     for(const pair of cards){const cell=document.createElement("div");cell.className="stat";const label=document.createElement("b");label.textContent=pair[0];const value=document.createElement("div");value.textContent=String(pair[1]);cell.append(label,value);byId("status").appendChild(cell)}
+}
+async function loadSnapshots() {
+    const snapshots=await requestJson("/api/database/snapshots");
+    const host=byId("automaticSnapshots");host.replaceChildren();
+    if(!snapshots.length){host.textContent="Noch keine automatischen Wiederherstellungspunkte.";return}
+    for(const item of snapshots){
+        const row=document.createElement("div");row.className="audit-row";
+        const date=document.createElement("span");date.textContent=new Date(item.createdAt).toLocaleString("de-DE");
+        const size=document.createElement("span");size.textContent=(item.sizeBytes/1024).toFixed(1)+" KiB";
+        const link=document.createElement("a");link.href="/api/database/snapshots/"+encodeURIComponent(item.id);link.textContent="Sicherung laden";link.download="teiletracking-auto-backup-"+item.id+".json";
+        row.append(date,size,link);host.appendChild(row);
+    }
 }
 async function loadAudit() {
     const events=await requestJson("/api/database/audit");
@@ -762,7 +786,7 @@ async function restoreBackup(){
     if(!confirm(text+"\\n\\nDer komplette aktuelle Datenbankinhalt wird ersetzt. Vorherige Sicherung ist vorhanden? Wiederherstellung jetzt ausführen?"))return;
     const result=await requestJson("/api/database/restore",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({backup,revision:preview.currentRevision})});
     showMessage("Wiederherstellung abgeschlossen. "+result.trackingRecords+" Datensätze übernommen; Revision "+result.revision+".","success");
-    await loadStatus();await loadAudit();
+    await loadStatus();await loadAudit();await loadSnapshots();
 }
 async function savePort(){
     const cfg=await requestJson("/api/config");
@@ -778,7 +802,7 @@ byId("encryptedBackup").addEventListener("click",()=>createEncryptedBackup().cat
 byId("plainBackup").addEventListener("click",()=>createPlainBackup().catch(e=>showMessage(e.message,"error")));
 byId("restoreButton").addEventListener("click",()=>restoreBackup().catch(e=>showMessage(e.message,"error")));
 byId("savePort").addEventListener("click",()=>savePort().catch(e=>showMessage(e.message,"error")));
-Promise.all([loadStatus(),loadAudit(),requestJson("/api/config").then(c=>{byId("port").value=c.network.port})]).catch(e=>showMessage(e.message,"error"));
+Promise.all([loadStatus(),loadAudit(),loadSnapshots(),requestJson("/api/config").then(c=>{byId("port").value=c.network.port})]).catch(e=>showMessage(e.message,"error"));
 </script></body></html>
 """;
 }
@@ -788,6 +812,7 @@ sealed class DatabaseStore
     private const int CurrentSchemaVersion = 2;
     private const int MaximumBackupBytes = 12 * 1024 * 1024;
     private readonly string _connectionString;
+    private readonly string _automaticBackupDirectory;
     private readonly object _gate = new();
 
     public int TrackingCount
@@ -804,6 +829,7 @@ sealed class DatabaseStore
     public DatabaseStore(string path)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        _automaticBackupDirectory = Path.Combine(Path.GetDirectoryName(path)!, "automatic-backups");
         _connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = path,
@@ -907,6 +933,63 @@ sealed class DatabaseStore
         get { using var connection = Open(); return ReadRevision(connection); }
     }
 
+    public int AutomaticBackupCount
+    {
+        get
+        {
+            if (!Directory.Exists(_automaticBackupDirectory)) return 0;
+            return Directory.EnumerateFiles(_automaticBackupDirectory, "*.json", SearchOption.TopDirectoryOnly)
+                .Count(path => Guid.TryParseExact(Path.GetFileNameWithoutExtension(path), "N", out _));
+        }
+    }
+
+    public JsonArray LoadAutomaticBackups()
+    {
+        var items = new JsonArray();
+        if (!Directory.Exists(_automaticBackupDirectory)) return items;
+        foreach (var path in Directory.EnumerateFiles(_automaticBackupDirectory, "*.json", SearchOption.TopDirectoryOnly)
+            .Where(path => Guid.TryParseExact(Path.GetFileNameWithoutExtension(path), "N", out _))
+            .OrderByDescending(File.GetLastWriteTimeUtc).Take(7))
+        {
+            var info = new FileInfo(path);
+            items.Add(new JsonObject
+            {
+                ["id"] = Path.GetFileNameWithoutExtension(path),
+                ["createdAt"] = info.LastWriteTimeUtc.ToString("O"),
+                ["sizeBytes"] = info.Length
+            });
+        }
+        return items;
+    }
+
+    public byte[]? ReadAutomaticBackup(string id)
+    {
+        if (!Guid.TryParseExact(id, "N", out _)) return null;
+        var path = Path.Combine(_automaticBackupDirectory, id + ".json");
+        return File.Exists(path) ? File.ReadAllBytes(path) : null;
+    }
+
+    private void CreateAutomaticBackup()
+    {
+        Directory.CreateDirectory(_automaticBackupDirectory);
+        var id = Guid.NewGuid().ToString("N");
+        var path = Path.Combine(_automaticBackupDirectory, id + ".json");
+        var temporaryPath = path + ".tmp";
+        try
+        {
+            File.WriteAllBytes(temporaryPath, CreateBackup());
+            File.Move(temporaryPath, path);
+            foreach (var stale in Directory.EnumerateFiles(_automaticBackupDirectory, "*.json", SearchOption.TopDirectoryOnly)
+                .Where(file => Guid.TryParseExact(Path.GetFileNameWithoutExtension(file), "N", out _))
+                .OrderByDescending(File.GetLastWriteTimeUtc).Skip(7))
+                File.Delete(stale);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        }
+    }
+
     public JsonNode LoadMasterData()
     {
         using var connection = Open();
@@ -978,6 +1061,7 @@ sealed class DatabaseStore
     {
         lock (_gate)
         {
+            CreateAutomaticBackup();
             using var connection = Open();
             using var transaction = connection.BeginTransaction();
             using (var command = connection.CreateCommand())
@@ -1016,6 +1100,13 @@ sealed class DatabaseStore
         lock (_gate)
         {
             using var connection = Open();
+            var beforeBackupRevision = ReadRevision(connection);
+            if (beforeBackupRevision != expectedRevision)
+            {
+                newRevision = beforeBackupRevision;
+                return false;
+            }
+            CreateAutomaticBackup();
             using var transaction = connection.BeginTransaction();
             var currentRevision = ReadRevision(connection, transaction);
             if (currentRevision != expectedRevision)
@@ -1052,6 +1143,7 @@ sealed class DatabaseStore
     {
         lock (_gate)
         {
+            CreateAutomaticBackup();
             using var connection = Open();
             using var transaction = connection.BeginTransaction();
             using var countCommand = connection.CreateCommand();
@@ -1149,15 +1241,9 @@ sealed class DatabaseStore
         try { parsed = JsonNode.Parse(Encoding.UTF8.GetString(bytes), documentOptions: new JsonDocumentOptions { MaxDepth = 16 }); }
         catch (JsonException) { error = "Backup-Payload enthält ungültiges JSON."; return false; }
         if (parsed is not JsonObject body ||
-            body["format"] is not JsonValue formatNode ||
-            !formatNode.TryGetValue<string>(out var format) ||
-            format != "TeiletrackingDatabaseBackup" ||
-            body["formatVersion"] is not JsonValue formatVersionNode ||
-            !formatVersionNode.TryGetValue<int>(out var formatVersion) ||
-            formatVersion != 1 ||
-            body["schemaVersion"] is not JsonValue schemaVersionNode ||
-            !schemaVersionNode.TryGetValue<int>(out var schemaVersion) ||
-            schemaVersion != CurrentSchemaVersion ||
+            body["format"]?.GetValue<string>() != "TeiletrackingDatabaseBackup" ||
+            body["formatVersion"]?.GetValue<int>() != 1 ||
+            body["schemaVersion"]?.GetValue<int>() != CurrentSchemaVersion ||
             body["masterData"] is not JsonObject master ||
             body["trackingRecords"] is not JsonArray records ||
             records.Count > 1000 ||
@@ -1209,6 +1295,13 @@ sealed class DatabaseStore
         lock (_gate)
         {
             using var connection = Open();
+            var beforeBackupRevision = ReadRevision(connection);
+            if (beforeBackupRevision != expectedRevision)
+            {
+                newRevision = beforeBackupRevision;
+                return false;
+            }
+            CreateAutomaticBackup();
             using var transaction = connection.BeginTransaction();
             var currentRevision = ReadRevision(connection, transaction);
             if (currentRevision != expectedRevision)
