@@ -4,13 +4,13 @@ Stand der Prüfung: 2026-10-06
 Quellrepository: https://github.com/WeA200675/Teiletracking_Tool  
 Geprüfter Ausgangs-Commit: `e9fbb50d56d4f5f6a44acb96a6138a3b813c8767` (Branch `main`)  
 Arbeitszweig: `codex/ghe-migration-readiness`  
-Ziel: BMW GitHub Enterprise unter `bmw.ghe.com` (vom Repository-Eigentümer genannt; Domain/Erreichbarkeit noch zu verifizieren). Zielrepository: `Teiletracking_Tool`, Sichtbarkeit intern/privat.
+Ziel: GitHub Enterprise Server unter `ghe.bmw.de` (bestätigt; Zielorganisation und Erreichbarkeit sind noch zu verifizieren). Zielrepository: `Teiletracking_Tool`, Sichtbarkeit intern/privat.
 
 ## Ergebnis
 
 **Status: NICHT FREIGABEFÄHIG für produktive BMW-Daten oder produktiven Betrieb.** Die technischen Änderungen unten reduzieren konkrete Risiken im Arbeitszweig. Sie ersetzen weder ein BMW Threat Model und unabhängigen Penetrationstest noch die Rechte-, Datenschutz-, OSS-, Informationssicherheits- oder Betriebsfreigabe.
 
-Die Quellrepository-Sichtbarkeit soll auf privat gestellt werden. Die Git-Historie und bisherige Veröffentlichung können bereits eingesehene Inhalte nicht zurückholen. Das Zielrepository soll `Teiletracking_Tool` heißen und privat sein; Ziel-Domain und BMW-Freigaben sind noch zu verifizieren.
+Der Repository-Eigentümer stellt die Quellrepository-Sichtbarkeit selbst auf privat; bis dahin bleibt die Quelle öffentlich. Die Git-Historie und bisherige Veröffentlichung können bereits eingesehene Inhalte nicht zurückholen. Das Zielrepository soll `Teiletracking_Tool` heißen und privat sein; Ziel-Domain und BMW-Freigaben sind noch zu verifizieren.
 
 ### Im Arbeitszweig technisch gehärtet
 
@@ -83,7 +83,7 @@ Die Quellrepository-Sichtbarkeit soll auf privat gestellt werden. Die Git-Histor
 
 - [x] Öffentliche Pages-App am 2026-10-06 zurückgezogen und Pages-Quelle auf `None` gesetzt. GitHub bestätigt: „GitHub Pages is currently disabled“.
 - [x] Pages-Neubuilds sind deaktiviert. Die frühere Live-Seite war die Teiletracking-Webapp unter `https://wea200675.github.io/Teiletracking_Tool/prototype/`.
-- [ ] Repository-Eigentümer soll das öffentliche Quellrepository vor dem Transfer auf privat umstellen (vom Eigentümer gewünscht; die GitHub-Verbindung in dieser Arbeitsumgebung bietet keine Sichtbarkeitsänderung). Die Änderung stoppt den öffentlichen Repository-Zugriff, löscht aber keine bereits geklonten Kopien oder Git-Historie.
+- [ ] Repository-Eigentümer soll das öffentliche Quellrepository vor dem Transfer auf privat umstellen (vom Eigentümer gewünscht; der Repository-Eigentümer übernimmt die Sichtbarkeitsänderung selbst). Die Änderung stoppt den öffentlichen Repository-Zugriff, löscht aber keine bereits geklonten Kopien oder Git-Historie.
 - [ ] Vor dem internen Import öffentliche Git-Historie genauso scannen wie den aktuellen Stand. Bei sensiblen historischen Inhalten Git-Historie bereinigen und exponierte Geheimnisse rotieren.
 
 ## Empfohlene Transferabfolge
