@@ -4,7 +4,7 @@ Lokale Anwendung zur Erfassung und Verwaltung von Teilen und Steuergeräten. Die
 
 ## Aktueller Stand
 
-Der native Windows-Host stellt eine lokale SQLite-Datenbank bereit. Die Datenbank liegt im Benutzerprofil unter `%LOCALAPPDATA%\\Teiletracking\\teiletracking.db`. Die Oberfläche kommuniziert mit ihr über die lokale HTTP-API des Hosts. Wird die Oberfläche ohne Host als statische Seite geöffnet, bleibt der bisherige Browser-Speicher aktiv.
+Der native Windows-Host stellt eine lokale SQLite-Datenbank bereit. Die Datenbank liegt im Benutzerprofil unter `%LOCALAPPDATA%\Teiletracking\teiletracking.db`. Die Oberfläche kommuniziert mit ihr über die lokale HTTP-API des Hosts. Wird die Oberfläche ohne Host als statische Seite geöffnet, bleibt der bisherige Browser-Speicher aktiv.
 
 Der Host bindet ausschließlich an `127.0.0.1`; Netzwerkzugriff ist deaktiviert und wird nicht durch Konfiguration freigeschaltet. Das WLAN- oder Domänennetz wird nicht verwendet. Der Datenbankweg ist für lokale Erprobung vorgesehen und nicht für produktive Verarbeitung oder BMW-Daten freigegeben.
 
@@ -37,7 +37,7 @@ Vorhandene Datensätze können über die Importfunktion der Oberfläche als JSON
 
 ## Sicherung und Wiederherstellung
 
-Vor jeder Datenbankänderung erstellt der Host einen lokalen Wiederherstellungspunkt. Es werden höchstens sieben dieser Punkte unter `%LOCALAPPDATA%\\Teiletracking\\automatic-backups` aufbewahrt. Sie sind unverschlüsselte Kopien auf demselben Rechner und schützen vor versehentlichen Änderungen, aber nicht vor Geräteverlust, Defekt oder Schadsoftware. Sie werden nicht automatisch auf ein anderes Medium übertragen.
+Vor jeder Datenbankänderung erstellt der Host einen lokalen Wiederherstellungspunkt. Es werden höchstens sieben dieser Punkte unter `%LOCALAPPDATA%\Teiletracking\automatic-backups` aufbewahrt. Sie sind unverschlüsselte Kopien auf demselben Rechner und schützen vor versehentlichen Änderungen, aber nicht vor Geräteverlust, Defekt oder Schadsoftware. Sie werden nicht automatisch auf ein anderes Medium übertragen.
 
 Für eine manuelle Sicherung bietet das Control Center ein passwortgeschütztes Backup-Paket (AES-256-GCM, Schlüsselableitung mit PBKDF2-SHA-256 und 310.000 Iterationen). Das Passwort muss mindestens 16 Zeichen haben und getrennt vom Paket sicher aufbewahrt werden. Bei Verlust des Passworts ist das Paket nicht wiederherstellbar. Ein SHA-256-Prüfwert erkennt Beschädigung, bestätigt aber weder Herkunft noch Unverändertheit gegenüber einem Angreifer, der Paket und Prüfwert zusammen ändern kann. Wiederherstellung zeigt zunächst eine Vorschau, verlangt Bestätigung und verwirft die aktuelle Datenbank vollständig; eine Revisionsprüfung weist Änderungen seit der Vorschau zurück.
 
