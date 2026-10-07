@@ -696,6 +696,71 @@
         });
     }
 
+    async function createDatabaseProvider() {
+        let databaseRevision = 0;
+        const statusResponse = await fetch("/api/status", { cache: "no-store" });
+        if (statusResponse.status === 404) {
+            const unavailable = new Error("Lokaler Datenbankdienst ist nicht vorhanden.");
+            unavailable.code = "DATABASE_API_NOT_FOUND";
+            throw unavailable;
+        }
+        if (!statusResponse.ok) throw new Error("Lokaler Datenbankdienst antwortet fehlerhaft (HTTP " + statusResponse.status + ").");
+        await statusResponse.json();
+        return Object.freeze({
+            info: Object.freeze({
+                key: "DATABASE",
+                displayName: "Lokale SQLite-Datenbank",
+                isLocal: true,
+                persistent: true
+            }),
+            async loadBootstrapData() {
+                const [masterData, trackingData, baseMasterData, baseTrackingPayload] = await Promise.all([
+                    fetchJson("/api/database/master-data", "Datenbank-Stammdaten konnten nicht geladen werden"),
+                    fetchJson("/api/database/tracking", "Datenbank-Datensätze konnten nicht geladen werden"),
+                    fetchJson(activeConfig.Local.BaseMasterDataUrl, "MasterData.json konnte nicht geladen werden"),
+                    fetchJson(activeConfig.Local.BaseTrackingDataUrl, "TrackingData.json konnte nicht geladen werden")
+                ]);
+                databaseRevision = trackingData.revision || 0;
+                return {
+                    baseMasterData,
+                    baseTrackingData: Array.isArray(baseTrackingPayload.Steuergeraete) ? baseTrackingPayload.Steuergeraete : [],
+                    localMasterData: masterData,
+                    trackingRecords: trackingData.records || [],
+                    databaseRevision
+                };
+            },
+            async saveMasterData(localMasterData) {
+                const response = await fetch("/api/database/master-data", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(localMasterData)
+                });
+                if (!response.ok) throw new Error("Stammdaten konnten nicht gespeichert werden (HTTP " + response.status + ").");
+                const result = await response.json();
+                databaseRevision = result.revision;
+                return result;
+            },
+            async saveTrackingData(records) {
+                const response = await fetch("/api/database/tracking", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ records, revision: databaseRevision })
+                });
+                if (!response.ok) throw new Error(response.status === 409 ? "Datenbankkonflikt: bitte die Anwendung neu laden." : "Datensätze konnten nicht gespeichert werden (HTTP " + response.status + ").");
+                const result = await response.json();
+                databaseRevision = result.revision;
+                return result;
+            },
+            async clearTrackingData() {
+                const response = await fetch("/api/database/tracking", { method: "DELETE" });
+                if (!response.ok) throw new Error("Datensätze konnten nicht gelöscht werden (HTTP " + response.status + ").");
+                const result = await response.json();
+                databaseRevision = result.revision;
+                return result;
+            }
+        });
+    }
+
     function createSharePointProvider(
         config
     ) {
@@ -814,10 +879,18 @@
                 configUrl
             );
 
-        activeProvider =
-            createProvider(
-                activeConfig
-            );
+        if (String(activeConfig.Provider || "").toUpperCase() === "DATABASE") {
+            activeProvider = await createDatabaseProvider();
+        }
+        else {
+            try {
+                activeProvider = await createDatabaseProvider();
+            }
+            catch (error) {
+                if (!error || error.code !== "DATABASE_API_NOT_FOUND") throw error;
+                activeProvider = createProvider(activeConfig);
+            }
+        }
 
         initialized = true;
 

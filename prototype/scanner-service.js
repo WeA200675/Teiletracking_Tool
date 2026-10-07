@@ -12,11 +12,6 @@
     let lastLiveQrAt = null;
     let pendingHighResolutionCapture = null;
     let bypassNextCaptureClick = false;
-    let zxingLoadPromise = null;
-
-    const ZXING_SCRIPT_URL =
-        "https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.4/dist/iife/reader/index.js";
-
     const LIVE_SCAN_INTERVAL_MS = 420;
     const LIVE_SCAN_MAX_WIDTH = 960;
 
@@ -82,137 +77,9 @@
         }
     }
 
-    function loadScript(url) {
-        return new Promise((resolve, reject) => {
-            const existing =
-                Array.from(
-                    document.scripts
-                ).find(
-                    script => script.src === url
-                );
-
-            if (existing) {
-                if (
-                    global.ZXingWASM &&
-                    typeof global.ZXingWASM.readBarcodes ===
-                    "function"
-                ) {
-                    resolve();
-                    return;
-                }
-
-                existing.addEventListener(
-                    "load",
-                    resolve,
-                    { once: true }
-                );
-                existing.addEventListener(
-                    "error",
-                    () => reject(
-                        new Error(
-                            "ZXing-WASM konnte nicht geladen werden."
-                        )
-                    ),
-                    { once: true }
-                );
-                return;
-            }
-
-            const script =
-                document.createElement(
-                    "script"
-                );
-
-            script.src = url;
-            script.async = true;
-            script.crossOrigin = "anonymous";
-
-            script.addEventListener(
-                "load",
-                resolve,
-                { once: true }
-            );
-
-            script.addEventListener(
-                "error",
-                () => reject(
-                    new Error(
-                        "ZXing-WASM konnte nicht geladen werden."
-                    )
-                ),
-                { once: true }
-            );
-
-            document.head.appendChild(script);
-        });
-    }
-
-    async function ensureZxingWasm() {
-        if (
-            global.ZXingWASM &&
-            typeof global.ZXingWASM.readBarcodes ===
-            "function"
-        ) {
-            return true;
-        }
-
-        if (!zxingLoadPromise) {
-            zxingLoadPromise =
-                loadScript(
-                    ZXING_SCRIPT_URL
-                );
-        }
-
-        try {
-            await zxingLoadPromise;
-
-            if (
-                !global.ZXingWASM ||
-                typeof global.ZXingWASM.readBarcodes !==
-                "function"
-            ) {
-                return false;
-            }
-
-            if (
-                typeof global.ZXingWASM.prepareZXingModule ===
-                "function"
-            ) {
-                try {
-                    await global.ZXingWASM
-                        .prepareZXingModule({
-                            fireImmediately: true
-                        });
-                }
-                catch (error) {
-                    console.warn(
-                        "ZXing-WASM konnte nicht vorab initialisiert werden. Der Scan versucht es erneut.",
-                        error
-                    );
-                }
-            }
-
-            return true;
-        }
-        catch (error) {
-            console.warn(
-                "ZXing-WASM konnte nicht geladen werden. Browser-Fallback wird verwendet.",
-                error
-            );
-
-            zxingLoadPromise = null;
-            return false;
-        }
-    }
-
     async function initializeQrEngine() {
         detector = null;
         engineMode = "UNAVAILABLE";
-
-        if (await ensureZxingWasm()) {
-            engineMode = "ZXING_WASM";
-            return engineMode;
-        }
 
         if ("BarcodeDetector" in global) {
             try {
@@ -261,7 +128,7 @@
         }
 
         throw new Error(
-            "Keine QR-Engine verfügbar. ZXing-WASM, BarcodeDetector und jsQR konnten nicht geladen werden."
+            "Keine QR-Engine verfügbar. Browser BarcodeDetector und jsQR konnten nicht geladen werden."
         );
     }
 
@@ -897,223 +764,11 @@
         };
     }
 
-    async function decodeWithZxing(
-        canvas,
-        label
-    ) {
-        if (
-            !global.ZXingWASM ||
-            typeof global.ZXingWASM.readBarcodes !==
-            "function"
-        ) {
-            return "";
-        }
-
-        if (lastDiagnostics) {
-            lastDiagnostics.qrAttempts
-                .push(label);
-        }
-
-        const context =
-            canvas.getContext(
-                "2d",
-                {
-                    willReadFrequently:
-                        true
-                }
-            );
-
-        const imageData =
-            context.getImageData(
-                0,
-                0,
-                canvas.width,
-                canvas.height
-            );
-
-        const results =
-            await global.ZXingWASM
-                .readBarcodes(
-                    imageData,
-                    {
-                        formats: [
-                            "QRCode",
-                            "DataMatrix"
-                        ],
-                        tryHarder: true,
-                        tryRotate: true,
-                        tryInvert: true,
-                        tryDownscale: true,
-                        tryDenoise: true,
-                        maxNumberOfSymbols: 1
-                    }
-                );
-
-        const result =
-            Array.isArray(results)
-                ? results.find(
-                    item =>
-                        item &&
-                        item.isValid !==
-                            false &&
-                        String(
-                            item.text ||
-                            ""
-                        ).trim()
-                )
-                : null;
-
-        if (!result) {
-            return "";
-        }
-
-        const text =
-            String(
-                result.text || ""
-            ).trim();
-
-        if (
-            text &&
-            lastDiagnostics
-        ) {
-            lastDiagnostics.qrFoundBy =
-                label;
-        }
-
-        return text;
-    }
-
-    async function decodeWithBarcodeDetector(
-        canvas,
-        label
-    ) {
-        if (!detector) {
-            return "";
-        }
-
-        if (lastDiagnostics) {
-            lastDiagnostics.qrAttempts
-                .push(label);
-        }
-
-        try {
-            const barcodes =
-                await detector.detect(
-                    canvas
-                );
-
-            const raw =
-                barcodes &&
-                barcodes[0]
-                    ? String(
-                        barcodes[0]
-                            .rawValue ||
-                        ""
-                    ).trim()
-                    : "";
-
-            if (
-                raw &&
-                lastDiagnostics
-            ) {
-                lastDiagnostics.qrFoundBy =
-                    label;
-            }
-
-            return raw;
-        }
-        catch {
-            return "";
-        }
-    }
-
-    function decodeWithJsQr(
-        canvas,
-        label
-    ) {
-        if (
-            typeof global.jsQR !==
-            "function"
-        ) {
-            return "";
-        }
-
-        if (lastDiagnostics) {
-            lastDiagnostics.qrAttempts
-                .push(label);
-        }
-
-        const context =
-            canvas.getContext(
-                "2d",
-                {
-                    willReadFrequently:
-                        true
-                }
-            );
-
-        const imageData =
-            context.getImageData(
-                0,
-                0,
-                canvas.width,
-                canvas.height
-            );
-
-        const result =
-            global.jsQR(
-                imageData.data,
-                canvas.width,
-                canvas.height,
-                {
-                    inversionAttempts:
-                        "attemptBoth"
-                }
-            );
-
-        const text =
-            result &&
-            result.data
-                ? String(
-                    result.data
-                ).trim()
-                : "";
-
-        if (
-            text &&
-            lastDiagnostics
-        ) {
-            lastDiagnostics.qrFoundBy =
-                label;
-        }
-
-        return text;
-    }
-
     async function decodeSingleCanvas(
         canvas,
         label
     ) {
         let value = "";
-
-        if (
-            engineMode ===
-            "ZXING_WASM"
-        ) {
-            try {
-                value =
-                    await decodeWithZxing(
-                        canvas,
-                        `ZXing ${label}`
-                    );
-            }
-            catch (error) {
-                console.warn(
-                    "ZXing-WASM Scan fehlgeschlagen. Fallback wird versucht.",
-                    error
-                );
-            }
-        }
 
         if (
             !value &&
@@ -1181,7 +836,7 @@
                 );
 
             lastDiagnostics.qrFoundBy =
-                "ZXing Live-Scan";
+                "Live-Scan Treffer";
 
             return lastLiveQrText;
         }
@@ -1415,12 +1070,9 @@
                 engineMode,
             displayName:
                 engineMode ===
-                "ZXING_WASM"
-                    ? "ZXing-C++ WebAssembly"
-                    : engineMode ===
-                      "BARCODE_DETECTOR"
-                        ? "Browser BarcodeDetector"
-                        : "jsQR Fallback",
+                "BARCODE_DETECTOR"
+                    ? "Browser BarcodeDetector"
+                    : "jsQR",
             width:
                 settings.width ||
                 videoElement.videoWidth,

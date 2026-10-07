@@ -5,14 +5,14 @@ on:
     paths:
       - 'native-host/**'
       - 'prototype/**'
-      - 'tests/data/**'
+      - 'tests/**'
       - '.github/workflows/native-windows.yml'
   push:
     branches: [ main ]
     paths:
       - 'native-host/**'
       - 'prototype/**'
-      - 'tests/data/**'
+      - 'tests/**'
       - '.github/workflows/native-windows.yml'
 jobs:
   build:
@@ -20,10 +20,10 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
       - name: Publish self-contained Windows executable
         run: dotnet publish native-host/Teiletracking.Host.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist
       - name: Verify distribution
@@ -32,10 +32,16 @@ jobs:
           if (-not (Test-Path dist/Teiletracking.exe)) { throw "Teiletracking.exe fehlt" }
           if (-not (Test-Path dist/appsettings.default.json)) { throw "appsettings.default.json fehlt" }
           if (-not (Test-Path dist/app/prototype/index.html)) { throw "Tracking-Webapp fehlt" }
+          if (-not (Test-Path dist/app/prototype/vendor/jsQR-1.4.0.js)) { throw "jsQR-Vendor fehlt" }
+          if (-not (Test-Path dist/app/prototype/vendor/jszip-3.10.1.min.js)) { throw "JSZip-Vendor fehlt" }
+      - name: Test native host network and CSRF protections
+        shell: pwsh
+        run: ./tests/Test-NativeHostSecurity.ps1 -ExecutablePath dist/Teiletracking.exe
       - name: Create distribution
         shell: pwsh
         run: Compress-Archive -Path dist/* -DestinationPath Teiletracking-Windows-x64.zip
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: Teiletracking-Windows-x64
           path: Teiletracking-Windows-x64.zip

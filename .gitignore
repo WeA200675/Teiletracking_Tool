@@ -1,1 +1,18 @@
 .teiletracking/
+
+# Local database files and SQLite sidecars
+*.db
+*.db-shm
+*.db-wal
+
+# User data exports and migration packages
+teiletracking-*.json
+Teiletracking-*.json
+teiletracking-*.ttbackup
+
+# Local credentials and certificates
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
