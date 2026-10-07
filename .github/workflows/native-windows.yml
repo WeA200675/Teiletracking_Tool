@@ -5,7 +5,7 @@ on:
     paths:
       - 'native-host/**'
       - 'prototype/**'
-      - 'tests/data/**'
+      - 'tests/**'
       - '.github/workflows/native-windows.yml'
   push:
     branches: [ main ]
@@ -32,6 +32,9 @@ jobs:
           if (-not (Test-Path dist/Teiletracking.exe)) { throw "Teiletracking.exe fehlt" }
           if (-not (Test-Path dist/appsettings.default.json)) { throw "appsettings.default.json fehlt" }
           if (-not (Test-Path dist/app/prototype/index.html)) { throw "Tracking-Webapp fehlt" }
+      - name: Test native host network and CSRF protections
+        shell: pwsh
+        run: ./tests/Test-NativeHostSecurity.ps1 -ExecutablePath dist/Teiletracking.exe
       - name: Create distribution
         shell: pwsh
         run: Compress-Archive -Path dist/* -DestinationPath Teiletracking-Windows-x64.zip
