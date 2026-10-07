@@ -349,7 +349,10 @@ app.MapPut("/api/database/master-data", async (HttpContext c, DatabaseStore data
     return Results.Ok(new { saved = true });
 });
 app.MapGet("/api/database/tracking", (DatabaseStore database) =>
-    Results.Json(new { records = database.LoadTrackingData(), revision = database.Revision }));
+{
+    var snapshot = database.LoadTrackingSnapshot();
+    return Results.Json(new { records = snapshot.Records, revision = snapshot.Revision });
+});
 app.MapPut("/api/database/tracking", async (HttpContext c, DatabaseStore database) =>
 {
     JsonNode? data;
@@ -696,6 +699,31 @@ sealed class DatabaseStore
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT value FROM app_state WHERE key='master_data'";
         return JsonNode.Parse((string)command.ExecuteScalar()!)!;
+    }
+    public (JsonArray Records, long Revision) LoadTrackingSnapshot()
+    {
+        lock (_gate)
+        {
+            using var connection = Open();
+            using var transaction = connection.BeginTransaction();
+            long revision;
+            using (var revisionCommand = connection.CreateCommand())
+            {
+                revisionCommand.Transaction = transaction;
+                revisionCommand.CommandText = "SELECT value FROM app_state WHERE key='revision'";
+                revision = long.Parse((string)revisionCommand.ExecuteScalar()!);
+            }
+            var records = new JsonArray();
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "SELECT record_json FROM tracking_records ORDER BY updated_at, local_id";
+                using var reader = command.ExecuteReader();
+                while (reader.Read()) records.Add(JsonNode.Parse(reader.GetString(0)));
+            }
+            transaction.Commit();
+            return (records, revision);
+        }
     }
     public JsonArray LoadTrackingData()
     {
