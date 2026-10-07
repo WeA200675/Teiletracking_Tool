@@ -23,6 +23,8 @@ $config.network.port = $port
 $config.network.remoteAccessEnabled = $false
 $config | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $configDirectory "config.json") -Encoding utf8
 
+$previousPfxPassword = $env:TEILETRACKING_PFX_PASSWORD
+$previousAccessPassword = $env:TEILETRACKING_ACCESS_PASSWORD
 $process = $null
 $client = [System.Net.Http.HttpClient]::new()
 try {
@@ -79,6 +81,44 @@ try {
         throw "Gleich-originäre Queue-Anfrage funktioniert nicht (HTTP $([int]$sameOriginResponse.StatusCode))."
     }
 
+    Stop-Process -Id $process.Id -Force
+    $process.WaitForExit(5000) | Out-Null
+    $process = $null
+
+    $config.network.remoteAccessEnabled = $true
+    $config.https.enabled = $true
+    $config.https.pfxPath = Join-Path $env:TEMP ("missing-teiletracking-cert-" + [guid]::NewGuid().ToString("N") + ".pfx")
+    $config | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $configDirectory "config.json") -Encoding utf8
+    $env:TEILETRACKING_PFX_PASSWORD = "test-only-pfx-password"
+    $env:TEILETRACKING_ACCESS_PASSWORD = "test-only-access-password-with-more-than-20-characters"
+    $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru -WindowStyle Hidden
+
+    $ready = $false
+    for ($i = 0; $i -lt 40; $i++) {
+        if ($process.HasExited) {
+            throw "Host mit angefordertem Remote-Zugriff wurde vor dem Start beendet (Exit-Code $($process.ExitCode))."
+        }
+        try {
+            $status = $client.GetStringAsync("$baseUrl/api/status").GetAwaiter().GetResult() | ConvertFrom-Json
+            $ready = $true
+            break
+        }
+        catch {
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    if (-not $ready) { throw "Host mit ungültigem Zertifikat wurde nicht bereit." }
+    if ($status.remoteAccessEnabled -ne $false) {
+        throw "Remote-Zugriff blieb trotz fehlendem Zertifikat aktiv."
+    }
+    $listeners = Get-NetTCPConnection -State Listen -OwningProcess $process.Id -ErrorAction SilentlyContinue
+    $nonLoopback = @($listeners | Where-Object {
+        $_.LocalAddress -ne "127.0.0.1" -and $_.LocalAddress -ne "::1"
+    })
+    if ($nonLoopback.Count -gt 0) {
+        throw "Remote-Listener wurde trotz fehlendem Zertifikat geöffnet."
+    }
+
     Write-Host "Native Host Security smoke test passed."
 }
 finally {
@@ -87,5 +127,7 @@ finally {
         $process.WaitForExit(5000) | Out-Null
     }
     $client.Dispose()
+    $env:TEILETRACKING_PFX_PASSWORD = $previousPfxPassword
+    $env:TEILETRACKING_ACCESS_PASSWORD = $previousAccessPassword
     Remove-Item -LiteralPath $stateDirectory -Recurse -Force -ErrorAction SilentlyContinue
 }
