@@ -673,6 +673,18 @@ sealed class DatabaseStore
             INSERT OR IGNORE INTO app_state(key, value) VALUES ('revision', '0');
             """;
         command.ExecuteNonQuery();
+        using var versionCommand = connection.CreateCommand();
+        versionCommand.CommandText = "PRAGMA user_version";
+        var schemaVersion = Convert.ToInt32(versionCommand.ExecuteScalar());
+        if (schemaVersion == 0)
+        {
+            versionCommand.CommandText = "PRAGMA user_version = 1";
+            versionCommand.ExecuteNonQuery();
+        }
+        else if (schemaVersion != 1)
+        {
+            throw new InvalidDataException("Nicht unterstützte SQLite-Datenbankversion: " + schemaVersion);
+        }
     }
     private SqliteConnection Open()
     {
