@@ -8,6 +8,8 @@
 # User data exports and migration packages
 teiletracking-*.json
 Teiletracking-*.json
+teiletracking-*.ttbackup
+Teiletracking-*.ttbackup
 
 # Local credentials and certificates
 .env
