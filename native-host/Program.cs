@@ -349,11 +349,11 @@ app.MapPut("/api/database/tracking", async (HttpContext c, DatabaseStore databas
     if (data is not JsonObject obj || obj["records"] is not JsonArray records ||
         records.Count > 1000 || !IsBoundedJson(data))
         return Results.BadRequest(new { error = "Datensatzformat oder -größe ist unzulässig." });
-    var expectedRevision = obj["revision"]?.GetValue<long>();
-    if (expectedRevision is null || expectedRevision.Value != database.Revision)
+    if (obj["revision"] is not JsonValue revisionNode || !revisionNode.TryGetValue<long>(out var expectedRevision))
+        return Results.BadRequest(new { error = "Datenbankrevision fehlt oder ist ungültig." });
+    if (!database.TrySaveTrackingData(records, expectedRevision, out var newRevision))
         return Results.Conflict(new { code = "DATABASE-REVISION-CONFLICT", revision = database.Revision, error = "Die Datenbank wurde zwischenzeitlich geändert. Bitte neu laden." });
-    database.SaveTrackingData(records);
-    return Results.Ok(new { saved = records.Count, revision = database.Revision });
+    return Results.Ok(new { saved = records.Count, revision = newRevision });
 });
 app.MapDelete("/api/database/tracking", (DatabaseStore database) =>
 {
@@ -730,12 +730,24 @@ sealed class DatabaseStore
             command.ExecuteNonQuery();
         }
     }
-    public void SaveTrackingData(JsonArray records)
+    public bool TrySaveTrackingData(JsonArray records, long expectedRevision, out long newRevision)
     {
         lock (_gate)
         {
             using var connection = Open();
             using var transaction = connection.BeginTransaction();
+            using (var revisionCommand = connection.CreateCommand())
+            {
+                revisionCommand.Transaction = transaction;
+                revisionCommand.CommandText = "SELECT value FROM app_state WHERE key='revision'";
+                var currentRevision = long.Parse((string)revisionCommand.ExecuteScalar()!);
+                if (currentRevision != expectedRevision)
+                {
+                    transaction.Rollback();
+                    newRevision = currentRevision;
+                    return false;
+                }
+            }
             using (var command = connection.CreateCommand())
             {
                 command.Transaction = transaction;
@@ -762,6 +774,8 @@ sealed class DatabaseStore
                 command.ExecuteNonQuery();
             }
             transaction.Commit();
+            newRevision = expectedRevision + 1;
+            return true;
         }
     }
     public void ClearTrackingData()
