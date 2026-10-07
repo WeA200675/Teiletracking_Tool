@@ -134,7 +134,7 @@ if (remoteRequested && !remoteAccessAvailable)
 
 builder.WebHost.ConfigureKestrel(k =>
 {
-    k.Limits.MaxRequestBodySize = 1024 * 1024;
+    k.Limits.MaxRequestBodySize = 24 * 1024 * 1024;
     k.Listen(IPAddress.Loopback, port);
     if (remoteAccessAvailable)
         k.Listen(IPAddress.Parse(remoteBindAddress!), httpsPort,
@@ -345,8 +345,8 @@ app.MapPut("/api/database/master-data", async (HttpContext c, DatabaseStore data
     catch (JsonException) { return Results.BadRequest(new { error = "Ungültiges JSON." }); }
     if (data is not JsonObject || !IsBoundedJson(data))
         return Results.BadRequest(new { error = "Stammdatenformat oder -größe ist unzulässig." });
-    database.SaveMasterData(data);
-    return Results.Ok(new { saved = true });
+    var revision = database.SaveMasterData(data);
+    return Results.Ok(new { saved = true, revision });
 });
 app.MapGet("/api/database/tracking", (DatabaseStore database) =>
 {
@@ -363,14 +363,54 @@ app.MapPut("/api/database/tracking", async (HttpContext c, DatabaseStore databas
         return Results.BadRequest(new { error = "Datensatzformat oder -größe ist unzulässig." });
     if (obj["revision"] is not JsonValue revisionNode || !revisionNode.TryGetValue<long>(out var expectedRevision))
         return Results.BadRequest(new { error = "Datenbankrevision fehlt oder ist ungültig." });
-    if (!database.TrySaveTrackingData(records, expectedRevision, out var newRevision))
-        return Results.Conflict(new { code = "DATABASE-REVISION-CONFLICT", revision = database.Revision, error = "Die Datenbank wurde zwischenzeitlich geändert. Bitte neu laden." });
-    return Results.Ok(new { saved = records.Count, revision = newRevision });
+    try
+    {
+        if (!database.TrySaveTrackingData(records, expectedRevision, out var newRevision))
+            return Results.Conflict(new { code = "DATABASE-REVISION-CONFLICT", revision = database.Revision, error = "Die Datenbank wurde zwischenzeitlich geändert. Bitte neu laden." });
+        return Results.Ok(new { saved = records.Count, revision = newRevision });
+    }
+    catch (InvalidDataException ex) { return Results.BadRequest(new { error = ex.Message }); }
 });
 app.MapDelete("/api/database/tracking", (DatabaseStore database) =>
+    Results.Ok(new { deleted = true, revision = database.ClearTrackingData() }));
+app.MapGet("/api/database/audit", (DatabaseStore database) =>
+    Results.Json(database.LoadRecentAudit()));
+app.MapGet("/api/database/backup", (HttpContext c, DatabaseStore database) =>
 {
-    database.ClearTrackingData();
-    return Results.Ok(new { deleted = true, revision = database.Revision });
+    c.Response.Headers["Cache-Control"] = "no-store";
+    var fileName = "teiletracking-db-backup-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + ".json";
+    return Results.File(database.CreateBackup(), "application/json; charset=utf-8", fileName);
+});
+app.MapPost("/api/database/restore/preview", async (HttpContext c, DatabaseStore database) =>
+{
+    JsonNode? backup;
+    try { backup = await JsonNode.ParseAsync(c.Request.Body, documentOptions: new JsonDocumentOptions { MaxDepth = 16 }, cancellationToken: c.RequestAborted); }
+    catch (JsonException) { return Results.BadRequest(new { error = "Ungültiges Backup-JSON." }); }
+    if (!DatabaseStore.TryDecodeBackup(backup, out var payload, out _, out var error))
+        return Results.BadRequest(new { error });
+    var records = (JsonArray)payload["trackingRecords"]!;
+    return Results.Ok(new {
+        valid = true,
+        schemaVersion = payload["schemaVersion"]!.GetValue<int>(),
+        trackingRecords = records.Count,
+        currentTrackingRecords = database.TrackingCount,
+        derivate = (payload["masterData"]?["Derivate"] as JsonArray)?.Count ?? 0,
+        iStufen = (payload["masterData"]?["IStufen"] as JsonArray)?.Count ?? 0,
+        currentRevision = database.Revision
+    });
+});
+app.MapPost("/api/database/restore", async (HttpContext c, DatabaseStore database) =>
+{
+    JsonNode? data;
+    try { data = await JsonNode.ParseAsync(c.Request.Body, documentOptions: new JsonDocumentOptions { MaxDepth = 16 }, cancellationToken: c.RequestAborted); }
+    catch (JsonException) { return Results.BadRequest(new { error = "Ungültiges JSON." }); }
+    if (data is not JsonObject request || request["revision"] is not JsonValue revNode ||
+        !revNode.TryGetValue<long>(out var expectedRevision) ||
+        !DatabaseStore.TryDecodeBackup(request["backup"], out var payload, out var backupHash, out var error))
+        return Results.BadRequest(new { error = "Restore-Anfrage oder Backup ist ungültig." });
+    if (!database.TryRestoreBackup(payload, backupHash, expectedRevision, out var newRevision))
+        return Results.Conflict(new { code = "DATABASE-REVISION-CONFLICT", revision = database.Revision, error = "Die Datenbank wurde nach der Vorschau geändert. Bitte Vorschau erneut laden." });
+    return Results.Ok(new { restored = true, revision = newRevision, trackingRecords = (payload["trackingRecords"] as JsonArray)?.Count ?? 0 });
 });
 app.MapGet("/api/interfaces", () => Results.Ok(Interfaces()));
 app.MapGet("/api/config", (HttpContext c) =>
@@ -607,44 +647,149 @@ static class ControlCenter
 {
 public const string Html = """
 <!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Teiletracking Control Center</title><style>
-body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#f5f6f8;color:#1b1b1b}main{max-width:980px;margin:auto;padding:24px}
-.card{background:white;border:1px solid #ddd;border-radius:10px;padding:18px;margin:14px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-label{display:block;font-weight:600;margin-top:10px}input,select{box-sizing:border-box;width:100%;padding:9px;margin-top:4px}
-button,a.btn{display:inline-block;padding:9px 14px;margin:8px 6px 0 0;border:0;border-radius:6px;background:#222;color:white;text-decoration:none;cursor:pointer}
-small{color:#555}.ok{color:#167c35}.warn{color:#9a5b00}pre{white-space:pre-wrap}
-</style></head><body><main><h1>Teiletracking – Setup & Control Center</h1>
-<div class="card"><h2>Status</h2><div id="status">Lade…</div><button onclick="loadStatus()">Aktualisieren</button><a class="btn" href="/prototype/">Tracking öffnen</a></div>
-<div class="card"><h2>Netzwerk</h2><div id="interfaces"></div>
-<label>Modus<select id="netMode"><option>MANUAL_RANGE</option><option>AUTO</option></select></label>
-<label>Netzwerk des Tracking-PCs (CIDR)<input id="cidr" placeholder="10.138.24.0/24"></label>
-<label>Bevorzugte Schnittstelle<input id="iface" placeholder="z. B. bmw"></label>
-<label>HTTP-Port<input id="port" type="number"></label>
-<label><input id="remoteEnabled" type="checkbox" style="width:auto"> Zugriff aus dem ausgewählten Netz aktivieren</label>
-<small>Standard ist nur Zugriff auf diesem PC. Netzwerkzugriff wird nur mit HTTPS-Zertifikat und TEILETRACKING_ACCESS_PASSWORD (mindestens 20 Zeichen) geöffnet.</small></div>
-<div class="card"><h2>HTTPS für Smartphone-Kamera</h2>
-<label><input id="httpsEnabled" type="checkbox" style="width:auto"> HTTPS aktivieren</label>
-<label>HTTPS-Port<input id="httpsPort" type="number"></label>
-<label>PFX-Zertifikatspfad<input id="pfx" placeholder="C:\Zertifikate\teiletracking.pfx"></label>
-<small>Das Zertifikat muss auf den Smartphones als vertrauenswürdig gelten. Das Passwort wird nicht gespeichert; es kommt aus TEILETRACKING_PFX_PASSWORD.</small></div>
-<div class="card"><h2>Lokale Datenbank</h2>
-<p>Speicher: SQLite auf diesem Rechner</p><p>Datei: <code>%LOCALAPPDATA%\Teiletracking\teiletracking.db</code></p>
-<p id="databaseSummary">Datenbankstatus wird geladen …</p>
-<small>Der Listener bleibt auf diesem PC. Für Sicherung und Datenübernahme die Exportfunktionen der Tracking-Oberfläche verwenden. Es gibt noch keine automatische Sicherung.</small></div>
-<div class="card"><button onclick="save()">Konfiguration speichern</button><button onclick="exportQueue()">Fallback-Paket exportieren</button><pre id="result"></pre></div>
-</main><script>
-let cfg;
-async function load(){cfg=await (await fetch('/api/config')).json();netMode.value=cfg.network.mode;cidr.value=cfg.network.preferredNetwork;iface.value=cfg.network.preferredInterface;port.value=cfg.network.port;remoteEnabled.checked=false;remoteEnabled.disabled=true;httpsEnabled.checked=cfg.https.enabled;httpsPort.value=cfg.https.port;pfx.value=cfg.https.pfxPath;await loadStatus();const xs=await(await fetch('/api/interfaces')).json();interfaces.innerHTML=xs.map(x=>'<div><b>'+esc(x.name)+'</b>: '+esc(x.address)+'/'+x.prefixLength+'</div>').join('')}
-async function loadStatus(){const s=await(await fetch('/api/status')).json();status.innerHTML='<div class="grid"><div><b>Version</b><br>'+esc(s.version)+'</div><div><b>Listener</b><br>nur lokal</div><div><b>Datensätze</b><br>'+s.trackingRecords+'</div><div><b>Datenbankrevision</b><br>'+s.databaseRevision+'</div></div>';databaseSummary.textContent=s.trackingRecords+' Datensätze · Revision '+s.databaseRevision}
-async function save(){cfg.network.mode=netMode.value;cfg.network.preferredNetwork=cidr.value.trim();cfg.network.preferredInterface=iface.value.trim();cfg.network.port=+port.value;cfg.network.remoteAccessEnabled=false;cfg.https.enabled=httpsEnabled.checked;cfg.https.port=+httpsPort.value;cfg.https.pfxPath=pfx.value.trim();cfg.network.remoteAccessEnabled=false;delete cfg.sharePoint;result.textContent=JSON.stringify(await(await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(cfg)})).json(),null,2)}
-async function exportQueue(){result.textContent=JSON.stringify(await(await fetch('/api/sync/export',{method:'POST'})).json(),null,2)}
-function esc(x){return String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}load();
+<title>Teiletracking – lokale Verwaltung</title><style>
+:root{color-scheme:light}body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#f3f5f7;color:#20252b}
+main{max-width:1040px;margin:auto;padding:24px}.card{background:#fff;border:1px solid #d8dde3;border-radius:12px;padding:20px;margin:16px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.stat{background:#f5f7f9;padding:14px;border-radius:8px}
+button,a.btn{display:inline-block;padding:10px 15px;margin:8px 8px 0 0;border:0;border-radius:7px;background:#17365d;color:#fff;text-decoration:none;cursor:pointer;font:inherit}
+button.secondary,a.secondary{background:#eef2f5;color:#17212b;border:1px solid #cbd3dc}button.danger{background:#9e2727}
+input{box-sizing:border-box;width:min(100%,400px);padding:10px;margin:8px 0}small,.muted{color:#5b6570}.warn{color:#8b4d00}
+.audit-row{display:grid;grid-template-columns:180px 1fr 90px;gap:12px;padding:10px 0;border-bottom:1px solid #e3e6ea;font-size:.92rem}
+#message{white-space:pre-wrap;padding:10px;border-radius:6px}.error{background:#fff0f0;color:#8d1c1c}.success{background:#eff8f0;color:#165a22}
+code{overflow-wrap:anywhere}li{margin:6px 0}@media(max-width:600px){main{padding:12px}.audit-row{grid-template-columns:1fr}.card{padding:14px}}
+</style></head><body><main>
+<h1>Teiletracking – lokale Verwaltung</h1>
+<p class="muted">Die Anwendung und Datenbank laufen nur auf diesem Windows-PC. Es wird keine WLAN- oder Domänenfreigabe geöffnet.</p>
+<section class="card"><h2>Datenbankstatus</h2>
+<div id="status" class="grid"><div class="stat">Lade Status …</div></div>
+<p>Datei: <code>%LOCALAPPDATA%\Teiletracking\teiletracking.db</code></p>
+<a class="btn" href="/prototype/">Tracking öffnen und Datensätze verwalten</a>
+<button class="secondary" type="button" id="refreshButton">Status aktualisieren</button>
+<div><label for="port">Lokaler HTTP-Port</label><br><input id="port" type="number" min="1024" max="65535" value="8000"></div>
+<button class="secondary" id="savePort" type="button">Port speichern</button>
+<small>Portänderungen werden nach Neustart wirksam. Netzwerkzugriff bleibt fest deaktiviert.</small></section>
+
+<section class="card"><h2>Sicherung und Wiederherstellung</h2>
+<p>Die verschlüsselte Sicherung enthält Stammdaten und Tracking-Datensätze. Sie wird mit AES-256-GCM und einem aus dem Passwort abgeleiteten Schlüssel verschlüsselt. Passwortverlust bedeutet Datenverlust. Passwort nicht zusammen mit der Sicherungsdatei aufbewahren.</p>
+<button id="encryptedBackup" type="button">Verschlüsselte Sicherung herunterladen</button>
+<button id="plainBackup" class="secondary" type="button">Unverschlüsselte Sicherung als Notfallformat</button>
+<div><label for="backupFile">Sicherungsdatei wiederherstellen oder prüfen</label><br>
+<input id="backupFile" type="file" accept=".ttbackup,.json,application/json"></div>
+<button id="restoreButton" class="danger" type="button">Backup prüfen und wiederherstellen</button>
+<p class="warn">Eine Wiederherstellung ersetzt den aktuellen Datenbankinhalt vollständig. Erstellt vorab eine verschlüsselte Sicherung und kontrolliert die Vorschau.</p>
+<p id="message" aria-live="polite"></p>
+</section>
+
+<section class="card"><h2>Lokaler Änderungsverlauf</h2>
+<p>Die letzten Datenbankänderungen werden lokal mit Zeit, Vorgang, Anzahl und SHA-256-Prüfwert aufgezeichnet. Der Verlauf enthält keine Datensatzinhalte und keine Benutzerkennung; er ist nicht revisionssicher und wird auf 10.000 Einträge begrenzt.</p>
+<div id="audit" class="muted">Lade Verlauf …</div>
+<button class="secondary" id="refreshAudit" type="button">Verlauf aktualisieren</button>
+</section>
+
+<section class="card"><h2>Übernahme alter Browserdaten</h2>
+<ol>
+<li>In der alten Browseransicht zuerst die Tracking-Daten als JSON exportieren.</li>
+<li>Diese Anwendung über „Tracking öffnen“ starten und im Bereich Tracking-Historie die JSON-Datei importieren.</li>
+<li>Anzahl der importierten, übersprungenen und ungültigen Datensätze prüfen. Vorhandene Datensätze werden nicht automatisch gelöscht.</li>
+</ol>
+<p>Die JSON-Importfunktion bleibt als Ausweichweg erhalten, wenn eine Datenbanksicherung beschädigt oder nicht verfügbar ist.</p>
+</section>
+</main>
+<script src="/prototype/backup-service.js?v=sqlite-v2"></script><script>
+const byId = id => document.getElementById(id);
+function showMessage(text, kind) { const box=byId("message");box.textContent=text;box.className=kind||""; }
+async function requestJson(url, options) {
+    const response=await fetch(url,options||{cache:"no-store"});
+    let body={};try{body=await response.json()}catch{}
+    if(!response.ok)throw new Error(body.error||("HTTP "+response.status));
+    return body;
+}
+async function loadStatus() {
+    const s=await requestJson("/api/status");
+    byId("status").replaceChildren();
+    const cards=[["Version",s.version],["Datensätze",s.trackingRecords],["Datenbankrevision",s.databaseRevision],["Zugriff","Nur dieser PC"]];
+    for(const pair of cards){const cell=document.createElement("div");cell.className="stat";const label=document.createElement("b");label.textContent=pair[0];const value=document.createElement("div");value.textContent=String(pair[1]);cell.append(label,value);byId("status").appendChild(cell)}
+}
+async function loadAudit() {
+    const events=await requestJson("/api/database/audit");
+    const host=byId("audit");host.replaceChildren();
+    if(!events.length){host.textContent="Noch keine Änderungen protokolliert.";return}
+    for(const item of events){
+        const row=document.createElement("div");row.className="audit-row";
+        const date=document.createElement("span");date.textContent=new Date(item.occurredAt).toLocaleString("de-DE");
+        const operation=document.createElement("span");operation.textContent=item.operation+" · "+item.recordCount+" Datensätze · SHA-256 "+item.payloadSha256.slice(0,16)+"…";
+        const id=document.createElement("span");id.textContent="#"+item.id;
+        row.append(date,operation,id);host.appendChild(row);
+    }
+}
+function downloadBlob(blob,name){const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+async function fetchBackup(){const response=await fetch("/api/database/backup",{cache:"no-store"});if(!response.ok)throw new Error("Backup konnte nicht erstellt werden (HTTP "+response.status+").");return response.text()}
+async function createEncryptedBackup(){
+    const pass=prompt("Backup-Passwort eingeben (mindestens 16 Zeichen). Passwort getrennt von der Datei aufbewahren.");
+    if(pass===null)return;if(pass.length<16)throw new Error("Das Passwort muss mindestens 16 Zeichen haben.");
+    const again=prompt("Backup-Passwort zur Bestätigung erneut eingeben.");
+    if(again===null)return;if(pass!==again)throw new Error("Die Passwörter stimmen nicht überein.");
+    const plaintext=await fetchBackup();
+    const encrypted=await TeiletrackingBackupService.encrypt(plaintext,pass);
+    const stamp=new Date().toISOString().replace(/[:.]/g,"-");
+    downloadBlob(new Blob([JSON.stringify(encrypted)],{type:"application/json"}),"teiletracking-db-backup-"+stamp+".ttbackup");
+    showMessage("Verschlüsselte Sicherung erstellt. Passwort separat und sicher aufbewahren.","success");
+}
+async function createPlainBackup(){
+    if(!confirm("Diese Notfallsicherung ist unverschlüsselt und enthält alle gespeicherten Daten. Nur auf einem zugriffsgeschützten, verschlüsselten Datenträger speichern. Fortfahren?"))return;
+    const plaintext=await fetchBackup();const stamp=new Date().toISOString().replace(/[:.]/g,"-");
+    downloadBlob(new Blob([plaintext],{type:"application/json"}),"teiletracking-db-backup-plain-"+stamp+".json");
+    showMessage("Unverschlüsselte Notfallsicherung erstellt. Datei vertraulich behandeln.","warn");
+}
+async function readBackupFile(file){
+    if(!file)throw new Error("Bitte eine Backupdatei auswählen.");
+    if(file.size>24*1024*1024)throw new Error("Die Backupdatei ist größer als 24 MiB.");
+    let parsed=JSON.parse(await file.text());
+    if(TeiletrackingBackupService.isEncryptedPackage(parsed)){
+        const pass=prompt("Passwort für die verschlüsselte Sicherung eingeben.");
+        if(pass===null)throw new Error("Wiederherstellung abgebrochen.");
+        parsed=JSON.parse(await TeiletrackingBackupService.decrypt(parsed,pass));
+    }else if(!confirm("Das ausgewählte Backup ist unverschlüsselt. Nur fortfahren, wenn die Datei aus einer vertrauenswürdigen Quelle stammt.")){
+        throw new Error("Wiederherstellung abgebrochen.");
+    }
+    return parsed;
+}
+async function restoreBackup(){
+    const file=byId("backupFile").files[0];const backup=await readBackupFile(file);
+    const preview=await requestJson("/api/database/restore/preview",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(backup)});
+    const text="Backup geprüft: "+preview.trackingRecords+" Tracking-Datensätze, "+preview.derivate+" Derivate und "+preview.iStufen+" I-Stufen. Aktueller Datenbankstand: Revision "+preview.currentRevision+".";
+    showMessage(text,"success");
+    if(!confirm(text+"\\n\\nDer komplette aktuelle Datenbankinhalt wird ersetzt. Vorherige Sicherung ist vorhanden? Wiederherstellung jetzt ausführen?"))return;
+    const result=await requestJson("/api/database/restore",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({backup,revision:preview.currentRevision})});
+    showMessage("Wiederherstellung abgeschlossen. "+result.trackingRecords+" Datensätze übernommen; Revision "+result.revision+".","success");
+    await loadStatus();await loadAudit();
+}
+async function savePort(){
+    const cfg=await requestJson("/api/config");
+    const value=Number(byId("port").value);
+    if(!Number.isInteger(value)||value<1024||value>65535)throw new Error("Port muss zwischen 1024 und 65535 liegen.");
+    cfg.network.port=value;cfg.network.remoteAccessEnabled=false;delete cfg.sharePoint;
+    const result=await requestJson("/api/config",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(cfg)});
+    showMessage(result.restartRequired?"Port gespeichert. Anwendung für die Änderung neu starten.":"Port gespeichert.","success");
+}
+byId("refreshButton").addEventListener("click",()=>loadStatus().catch(e=>showMessage(e.message,"error")));
+byId("refreshAudit").addEventListener("click",()=>loadAudit().catch(e=>showMessage(e.message,"error")));
+byId("encryptedBackup").addEventListener("click",()=>createEncryptedBackup().catch(e=>showMessage(e.message,"error")));
+byId("plainBackup").addEventListener("click",()=>createPlainBackup().catch(e=>showMessage(e.message,"error")));
+byId("restoreButton").addEventListener("click",()=>restoreBackup().catch(e=>showMessage(e.message,"error")));
+byId("savePort").addEventListener("click",()=>savePort().catch(e=>showMessage(e.message,"error")));
+Promise.all([loadStatus(),loadAudit(),requestJson("/api/config").then(c=>{byId("port").value=c.network.port})]).catch(e=>showMessage(e.message,"error"));
 </script></body></html>
 """;
 }
 
 sealed class DatabaseStore
 {
+    private const int CurrentSchemaVersion = 2;
+    private const int MaximumBackupBytes = 12 * 1024 * 1024;
+    private readonly string _connectionString;
+    private readonly object _gate = new();
+
     public int TrackingCount
     {
         get
@@ -655,12 +800,16 @@ sealed class DatabaseStore
             return Convert.ToInt32(command.ExecuteScalar());
         }
     }
-    private readonly string _connectionString;
-    private readonly object _gate = new();
+
     public DatabaseStore(string path)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        _connectionString = new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWriteCreate, Cache = SqliteCacheMode.Shared }.ToString();
+        _connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = path,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Cache = SqliteCacheMode.Shared
+        }.ToString();
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText = """
@@ -669,23 +818,32 @@ sealed class DatabaseStore
             CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS tracking_records (local_id TEXT PRIMARY KEY, record_json TEXT NOT NULL, updated_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS import_batches (batch_id TEXT PRIMARY KEY, imported_at TEXT NOT NULL, imported_count INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS audit_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                occurred_at TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                record_count INTEGER NOT NULL,
+                payload_sha256 TEXT NOT NULL
+            );
             INSERT OR IGNORE INTO app_state(key, value) VALUES ('master_data', '{"Derivate":[],"IStufen":[],"AktivOverrides":{"Derivate":{},"IStufen":{}}}');
             INSERT OR IGNORE INTO app_state(key, value) VALUES ('revision', '0');
             """;
         command.ExecuteNonQuery();
+
         using var versionCommand = connection.CreateCommand();
         versionCommand.CommandText = "PRAGMA user_version";
         var schemaVersion = Convert.ToInt32(versionCommand.ExecuteScalar());
-        if (schemaVersion == 0)
+        if (schemaVersion is 0 or 1)
         {
-            versionCommand.CommandText = "PRAGMA user_version = 1";
+            versionCommand.CommandText = "PRAGMA user_version = 2";
             versionCommand.ExecuteNonQuery();
         }
-        else if (schemaVersion != 1)
+        else if (schemaVersion != CurrentSchemaVersion)
         {
             throw new InvalidDataException("Nicht unterstützte SQLite-Datenbankversion: " + schemaVersion);
         }
     }
+
     private SqliteConnection Open()
     {
         var connection = new SqliteConnection(_connectionString);
@@ -695,16 +853,60 @@ sealed class DatabaseStore
         command.ExecuteNonQuery();
         return connection;
     }
+
+    private static long ReadRevision(SqliteConnection connection, SqliteTransaction? transaction = null)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT value FROM app_state WHERE key='revision'";
+        return long.Parse((string)command.ExecuteScalar()!);
+    }
+
+    private static long IncrementRevision(SqliteConnection connection, SqliteTransaction transaction)
+    {
+        var next = ReadRevision(connection, transaction) + 1;
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "UPDATE app_state SET value=$value WHERE key='revision'";
+        command.Parameters.AddWithValue("$value", next.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        command.ExecuteNonQuery();
+        return next;
+    }
+
+    private static string Hash(JsonNode value) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value.ToJsonString())));
+
+    private static void AppendAudit(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string operation,
+        int recordCount,
+        string payloadHash)
+    {
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = """
+                INSERT INTO audit_events(occurred_at, operation, record_count, payload_sha256)
+                VALUES ($at, $operation, $count, $hash)
+                """;
+            command.Parameters.AddWithValue("$at", DateTimeOffset.UtcNow.ToString("O"));
+            command.Parameters.AddWithValue("$operation", operation);
+            command.Parameters.AddWithValue("$count", recordCount);
+            command.Parameters.AddWithValue("$hash", payloadHash);
+            command.ExecuteNonQuery();
+        }
+        using var prune = connection.CreateCommand();
+        prune.Transaction = transaction;
+        prune.CommandText = "DELETE FROM audit_events WHERE id NOT IN (SELECT id FROM audit_events ORDER BY id DESC LIMIT 10000)";
+        prune.ExecuteNonQuery();
+    }
+
     public long Revision
     {
-        get
-        {
-            using var connection = Open();
-            using var command = connection.CreateCommand();
-            command.CommandText = "SELECT value FROM app_state WHERE key='revision'";
-            return long.Parse((string)command.ExecuteScalar()!);
-        }
+        get { using var connection = Open(); return ReadRevision(connection); }
     }
+
     public JsonNode LoadMasterData()
     {
         using var connection = Open();
@@ -712,31 +914,31 @@ sealed class DatabaseStore
         command.CommandText = "SELECT value FROM app_state WHERE key='master_data'";
         return JsonNode.Parse((string)command.ExecuteScalar()!)!;
     }
+
     public (JsonArray Records, long Revision) LoadTrackingSnapshot()
     {
         lock (_gate)
         {
             using var connection = Open();
             using var transaction = connection.BeginTransaction();
-            long revision;
-            using (var revisionCommand = connection.CreateCommand())
-            {
-                revisionCommand.Transaction = transaction;
-                revisionCommand.CommandText = "SELECT value FROM app_state WHERE key='revision'";
-                revision = long.Parse((string)revisionCommand.ExecuteScalar()!);
-            }
-            var records = new JsonArray();
-            using (var command = connection.CreateCommand())
-            {
-                command.Transaction = transaction;
-                command.CommandText = "SELECT record_json FROM tracking_records ORDER BY updated_at, local_id";
-                using var reader = command.ExecuteReader();
-                while (reader.Read()) records.Add(JsonNode.Parse(reader.GetString(0)));
-            }
+            var revision = ReadRevision(connection, transaction);
+            var records = LoadTrackingInTransaction(connection, transaction);
             transaction.Commit();
             return (records, revision);
         }
     }
+
+    private static JsonArray LoadTrackingInTransaction(SqliteConnection connection, SqliteTransaction transaction)
+    {
+        var records = new JsonArray();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT record_json FROM tracking_records ORDER BY updated_at, local_id";
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) records.Add(JsonNode.Parse(reader.GetString(0)));
+        return records;
+    }
+
     public JsonArray LoadTrackingData()
     {
         using var connection = Open();
@@ -747,34 +949,80 @@ sealed class DatabaseStore
         while (reader.Read()) records.Add(JsonNode.Parse(reader.GetString(0)));
         return records;
     }
-    public void SaveMasterData(JsonNode data)
+
+    public JsonArray LoadRecentAudit()
     {
         lock (_gate)
         {
             using var connection = Open();
             using var command = connection.CreateCommand();
-            command.CommandText = "UPDATE app_state SET value=$value WHERE key='master_data'";
-            command.Parameters.AddWithValue("$value", data.ToJsonString());
-            command.ExecuteNonQuery();
+            command.CommandText = "SELECT id, occurred_at, operation, record_count, payload_sha256 FROM audit_events ORDER BY id DESC LIMIT 100";
+            using var reader = command.ExecuteReader();
+            var events = new JsonArray();
+            while (reader.Read())
+            {
+                events.Add(new JsonObject
+                {
+                    ["id"] = reader.GetInt64(0),
+                    ["occurredAt"] = reader.GetString(1),
+                    ["operation"] = reader.GetString(2),
+                    ["recordCount"] = reader.GetInt32(3),
+                    ["payloadSha256"] = reader.GetString(4)
+                });
+            }
+            return events;
         }
     }
-    public bool TrySaveTrackingData(JsonArray records, long expectedRevision, out long newRevision)
+
+    public long SaveMasterData(JsonNode data)
     {
         lock (_gate)
         {
             using var connection = Open();
             using var transaction = connection.BeginTransaction();
-            using (var revisionCommand = connection.CreateCommand())
+            using (var command = connection.CreateCommand())
             {
-                revisionCommand.Transaction = transaction;
-                revisionCommand.CommandText = "SELECT value FROM app_state WHERE key='revision'";
-                var currentRevision = long.Parse((string)revisionCommand.ExecuteScalar()!);
-                if (currentRevision != expectedRevision)
-                {
-                    transaction.Rollback();
-                    newRevision = currentRevision;
-                    return false;
-                }
+                command.Transaction = transaction;
+                command.CommandText = "UPDATE app_state SET value=$value WHERE key='master_data'";
+                command.Parameters.AddWithValue("$value", data.ToJsonString());
+                command.ExecuteNonQuery();
+            }
+            var revision = IncrementRevision(connection, transaction);
+            AppendAudit(connection, transaction, "MASTER_DATA_SAVED", 0, Hash(data));
+            transaction.Commit();
+            return revision;
+        }
+    }
+
+    public bool TrySaveTrackingData(JsonArray records, long expectedRevision, out long newRevision)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var node in records)
+        {
+            if (node is not JsonObject record)
+                throw new InvalidDataException("Jeder Tracking-Datensatz muss ein JSON-Objekt sein.");
+            string? id;
+            try { id = record["LocalId"]?.GetValue<string>(); }
+            catch { throw new InvalidDataException("LocalId muss Text sein."); }
+            if (string.IsNullOrWhiteSpace(id))
+            {
+                id = Guid.NewGuid().ToString("D");
+                record["LocalId"] = id;
+            }
+            if (id.Length > 128 || !ids.Add(id))
+                throw new InvalidDataException("LocalId ist zu lang oder innerhalb der Liste doppelt vorhanden.");
+        }
+
+        lock (_gate)
+        {
+            using var connection = Open();
+            using var transaction = connection.BeginTransaction();
+            var currentRevision = ReadRevision(connection, transaction);
+            if (currentRevision != expectedRevision)
+            {
+                transaction.Rollback();
+                newRevision = currentRevision;
+                return false;
             }
             using (var command = connection.CreateCommand())
             {
@@ -782,11 +1030,9 @@ sealed class DatabaseStore
                 command.CommandText = "DELETE FROM tracking_records";
                 command.ExecuteNonQuery();
             }
-            foreach (var recordNode in records)
+            foreach (var record in records.OfType<JsonObject>())
             {
-                if (recordNode is not JsonObject record) throw new InvalidDataException("Datensatz muss ein JSON-Objekt sein.");
-                var id = record["LocalId"]?.GetValue<string>();
-                if (string.IsNullOrWhiteSpace(id)) { id = Guid.NewGuid().ToString("D"); record["LocalId"] = id; }
+                var id = record["LocalId"]!.GetValue<string>();
                 using var command = connection.CreateCommand();
                 command.Transaction = transaction;
                 command.CommandText = "INSERT INTO tracking_records(local_id, record_json, updated_at) VALUES ($id, $json, $updated)";
@@ -795,28 +1041,205 @@ sealed class DatabaseStore
                 command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
                 command.ExecuteNonQuery();
             }
-            using (var command = connection.CreateCommand())
-            {
-                command.Transaction = transaction;
-                command.CommandText = "UPDATE app_state SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT) WHERE key='revision'";
-                command.ExecuteNonQuery();
-            }
+            newRevision = IncrementRevision(connection, transaction);
+            AppendAudit(connection, transaction, "TRACKING_SNAPSHOT_SAVED", records.Count, Hash(records));
             transaction.Commit();
-            newRevision = expectedRevision + 1;
             return true;
         }
     }
-    public void ClearTrackingData()
+
+    public long ClearTrackingData()
     {
         lock (_gate)
         {
             using var connection = Open();
             using var transaction = connection.BeginTransaction();
-            using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = "DELETE FROM tracking_records; UPDATE app_state SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT) WHERE key='revision'";
-            command.ExecuteNonQuery();
+            using var countCommand = connection.CreateCommand();
+            countCommand.Transaction = transaction;
+            countCommand.CommandText = "SELECT COUNT(*) FROM tracking_records";
+            var previousCount = Convert.ToInt32(countCommand.ExecuteScalar());
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "DELETE FROM tracking_records";
+                command.ExecuteNonQuery();
+            }
+            var revision = IncrementRevision(connection, transaction);
+            var marker = new JsonObject { ["deletedRecordCount"] = previousCount };
+            AppendAudit(connection, transaction, "TRACKING_CLEARED", previousCount, Hash(marker));
             transaction.Commit();
+            return revision;
+        }
+    }
+
+    public byte[] CreateBackup()
+    {
+        lock (_gate)
+        {
+            using var connection = Open();
+            using var transaction = connection.BeginTransaction();
+            JsonNode master;
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "SELECT value FROM app_state WHERE key='master_data'";
+                master = JsonNode.Parse((string)command.ExecuteScalar()!)!;
+            }
+            var records = LoadTrackingInTransaction(connection, transaction);
+            var revision = ReadRevision(connection, transaction);
+            transaction.Commit();
+
+            var payload = JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                format = "TeiletrackingDatabaseBackup",
+                formatVersion = 1,
+                schemaVersion = CurrentSchemaVersion,
+                exportedAt = DateTimeOffset.UtcNow,
+                revision,
+                masterData = master,
+                trackingRecords = records
+            });
+            var hash = Convert.ToHexString(SHA256.HashData(payload));
+            return JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                formatVersion = 1,
+                sha256 = hash,
+                payload = Convert.ToBase64String(payload)
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+    }
+
+    public static bool TryDecodeBackup(JsonNode? package, out JsonObject payload, out string hash, out string error)
+    {
+        payload = new JsonObject();
+        hash = "";
+        error = "Backup ist ungültig.";
+        if (package is not JsonObject envelope ||
+            envelope["formatVersion"] is not JsonValue versionNode ||
+            !versionNode.TryGetValue<int>(out var version) || version != 1 ||
+            envelope["sha256"] is not JsonValue hashNode ||
+            !hashNode.TryGetValue<string>(out var suppliedHash) ||
+            envelope["payload"] is not JsonValue payloadNode ||
+            !payloadNode.TryGetValue<string>(out var encoded))
+            return false;
+        if (encoded.Length > (MaximumBackupBytes * 4 / 3) + 8 || suppliedHash.Length != 64)
+        {
+            error = "Backup ist zu groß oder enthält einen ungültigen Prüfsummenwert.";
+            return false;
+        }
+
+        byte[] bytes;
+        try { bytes = Convert.FromBase64String(encoded); }
+        catch (FormatException) { error = "Backup-Payload ist kein gültiges Base64."; return false; }
+        if (bytes.Length > MaximumBackupBytes)
+        {
+            error = "Backup überschreitet die zulässige Größe.";
+            return false;
+        }
+        var actualHash = Convert.ToHexString(SHA256.HashData(bytes));
+        var expectedBytes = Encoding.ASCII.GetBytes(suppliedHash.ToUpperInvariant());
+        var actualBytes = Encoding.ASCII.GetBytes(actualHash);
+        if (!CryptographicOperations.FixedTimeEquals(expectedBytes, actualBytes))
+        {
+            error = "Backup-Prüfsumme stimmt nicht. Datei wurde nicht angewendet.";
+            return false;
+        }
+
+        JsonNode? parsed;
+        try { parsed = JsonNode.Parse(Encoding.UTF8.GetString(bytes), documentOptions: new JsonDocumentOptions { MaxDepth = 16 }); }
+        catch (JsonException) { error = "Backup-Payload enthält ungültiges JSON."; return false; }
+        if (parsed is not JsonObject body ||
+            body["format"] is not JsonValue formatNode ||
+            !formatNode.TryGetValue<string>(out var format) ||
+            format != "TeiletrackingDatabaseBackup" ||
+            body["formatVersion"] is not JsonValue formatVersionNode ||
+            !formatVersionNode.TryGetValue<int>(out var formatVersion) ||
+            formatVersion != 1 ||
+            body["schemaVersion"] is not JsonValue schemaVersionNode ||
+            !schemaVersionNode.TryGetValue<int>(out var schemaVersion) ||
+            schemaVersion != CurrentSchemaVersion ||
+            body["masterData"] is not JsonObject master ||
+            body["trackingRecords"] is not JsonArray records ||
+            records.Count > 1000 ||
+            !IsBoundedBackupJson(body))
+        {
+            error = "Backupformat, Schema oder Datenbegrenzung ist ungültig.";
+            return false;
+        }
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var node in records)
+        {
+            if (node is not JsonObject record ||
+                record["LocalId"] is not JsonValue idNode ||
+                !idNode.TryGetValue<string>(out var id) ||
+                string.IsNullOrWhiteSpace(id) || id.Length > 128 || !ids.Add(id))
+            {
+                error = "Backup enthält ungültige oder doppelte LocalId-Werte.";
+                return false;
+            }
+        }
+
+        payload = body;
+        hash = actualHash;
+        error = "";
+        return true;
+    }
+
+    private static bool IsBoundedBackupJson(JsonNode? node, int depth = 0)
+    {
+        if (depth > 16) return false;
+        if (node is JsonObject obj)
+            return obj.Count <= 128 && obj.All(pair => pair.Key.Length <= 128 && IsBoundedBackupJson(pair.Value, depth + 1));
+        if (node is JsonArray array)
+            return array.Count <= 1000 && array.All(item => IsBoundedBackupJson(item, depth + 1));
+        if (node is JsonValue value)
+        {
+            try { return value.GetValue<string>().Length <= 8192; } catch { }
+            try { _ = value.GetValue<double>(); return true; } catch { }
+            try { _ = value.GetValue<bool>(); return true; } catch { }
+            return false;
+        }
+        return true;
+    }
+
+    public bool TryRestoreBackup(JsonObject payload, string backupHash, long expectedRevision, out long newRevision)
+    {
+        var masterData = (JsonObject)payload["masterData"]!.DeepClone();
+        var records = (JsonArray)payload["trackingRecords"]!.DeepClone();
+        lock (_gate)
+        {
+            using var connection = Open();
+            using var transaction = connection.BeginTransaction();
+            var currentRevision = ReadRevision(connection, transaction);
+            if (currentRevision != expectedRevision)
+            {
+                transaction.Rollback();
+                newRevision = currentRevision;
+                return false;
+            }
+            using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = "DELETE FROM tracking_records; UPDATE app_state SET value=$master WHERE key='master_data'";
+                command.Parameters.AddWithValue("$master", masterData.ToJsonString());
+                command.ExecuteNonQuery();
+            }
+            foreach (var record in records.OfType<JsonObject>())
+            {
+                var id = record["LocalId"]!.GetValue<string>();
+                using var command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = "INSERT INTO tracking_records(local_id, record_json, updated_at) VALUES ($id, $json, $updated)";
+                command.Parameters.AddWithValue("$id", id);
+                command.Parameters.AddWithValue("$json", record.ToJsonString());
+                command.Parameters.AddWithValue("$updated", DateTimeOffset.UtcNow.ToString("O"));
+                command.ExecuteNonQuery();
+            }
+            newRevision = IncrementRevision(connection, transaction);
+            AppendAudit(connection, transaction, "DATABASE_RESTORED", records.Count, backupHash);
+            transaction.Commit();
+            return true;
         }
     }
 }
+
