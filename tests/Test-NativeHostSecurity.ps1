@@ -92,6 +92,21 @@ try {
     if ($dbBefore.revision -ne 0 -or @($dbBefore.records).Count -ne 0) {
         throw "Neue lokale Datenbank startet nicht mit dem erwarteten leeren Ausgangszustand."
     }
+    $masterRequest = [System.Net.Http.HttpRequestMessage]::new(
+        [System.Net.Http.HttpMethod]::Put, "$baseUrl/api/database/master-data")
+    $masterRequest.Headers.Add("Origin", $baseUrl)
+    $masterRequest.Content = [System.Net.Http.StringContent]::new(
+        '{"Derivate":[{"Code":"SYNTHETIC"}],"IStufen":[{"Code":"SYNTHETIC"}],"AktivOverrides":{"Derivate":{},"IStufen":{}}}',
+        [System.Text.Encoding]::UTF8, "application/json")
+    $masterResponse = $client.SendAsync($masterRequest).GetAwaiter().GetResult()
+    if ([int]$masterResponse.StatusCode -ne 200) {
+        throw "Stammdaten konnten nicht gespeichert werden (HTTP $([int]$masterResponse.StatusCode))."
+    }
+    $masterSave = $masterResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+    if ($masterSave.revision -ne 1) { throw "Stammdatenänderung erhöhte die Datenbankrevision nicht." }
+    $masterRequest.Dispose()
+    $masterResponse.Dispose()
+
     $records = @(
         @{ LocalId = "instance-1"; PartNumber = "TEST-PN"; SerialNumber = "TEST-SN"; AssignmentKey = "same-assignment" },
         @{ LocalId = "instance-2"; PartNumber = "TEST-PN"; SerialNumber = "TEST-SN"; AssignmentKey = "same-assignment" }
@@ -100,14 +115,14 @@ try {
         [System.Net.Http.HttpMethod]::Put, "$baseUrl/api/database/tracking")
     $dbRequest.Headers.Add("Origin", $baseUrl)
     $dbRequest.Content = [System.Net.Http.StringContent]::new(
-        ('{"revision":0,"records":' + $records + '}'),
+        ('{"revision":1,"records":' + $records + '}'),
         [System.Text.Encoding]::UTF8, "application/json")
     $dbResponse = $client.SendAsync($dbRequest).GetAwaiter().GetResult()
     if ([int]$dbResponse.StatusCode -ne 200) {
         throw "SQLite-Trackingdaten konnten nicht gespeichert werden (HTTP $([int]$dbResponse.StatusCode))."
     }
     $dbSave = $dbResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
-    if ($dbSave.revision -ne 1 -or $dbSave.saved -ne 2) {
+    if ($dbSave.revision -ne 2 -or $dbSave.saved -ne 2) {
         throw "SQLite-Speichern lieferte eine unerwartete Revision oder Anzahl."
     }
     $dbRequest.Dispose()
@@ -117,7 +132,7 @@ try {
         [System.Net.Http.HttpMethod]::Put, "$baseUrl/api/database/tracking")
     $staleRequest.Headers.Add("Origin", $baseUrl)
     $staleRequest.Content = [System.Net.Http.StringContent]::new(
-        '{"revision":0,"records":[]}', [System.Text.Encoding]::UTF8, "application/json")
+        '{"revision":1,"records":[]}', [System.Text.Encoding]::UTF8, "application/json")
     $staleResponse = $client.SendAsync($staleRequest).GetAwaiter().GetResult()
     if ([int]$staleResponse.StatusCode -ne 409) {
         throw "Veraltete Datenbankrevision wurde nicht mit HTTP 409 zurückgewiesen."
@@ -137,7 +152,7 @@ try {
         throw "Gültige Datenbanksicherung konnte nicht geprüft werden (HTTP $([int]$previewResponse.StatusCode))."
     }
     $preview = $previewResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
-    if ($preview.trackingRecords -ne 2 -or $preview.currentTrackingRecords -ne 2) {
+    if ($preview.trackingRecords -ne 2 -or $preview.currentTrackingRecords -ne 2 -or $preview.derivate -ne 1 -or $preview.iStufen -ne 1) {
         throw "Sicherungsvorschau meldet unerwartete Datensatzanzahlen."
     }
     $previewRequest.Dispose()
@@ -170,7 +185,7 @@ try {
     $clearRequest.Dispose()
     $clearResponse.Dispose()
 
-    $restoreBody = @{ backup = $backupEnvelope; revision = 2 } | ConvertTo-Json -Depth 20 -Compress
+    $restoreBody = @{ backup = $backupEnvelope; revision = 3 } | ConvertTo-Json -Depth 20 -Compress
     $restoreRequest = [System.Net.Http.HttpRequestMessage]::new(
         [System.Net.Http.HttpMethod]::Post, "$baseUrl/api/database/restore")
     $restoreRequest.Headers.Add("Origin", $baseUrl)
@@ -181,14 +196,14 @@ try {
         throw "Datenbank konnte aus Sicherung nicht wiederhergestellt werden (HTTP $([int]$restoreResponse.StatusCode))."
     }
     $restored = $restoreResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
-    if ($restored.trackingRecords -ne 2 -or $restored.revision -ne 3) {
+    if ($restored.trackingRecords -ne 2 -or $restored.revision -ne 4) {
         throw "Restore lieferte eine unerwartete Datensatzanzahl oder Revision."
     }
     $restoreRequest.Dispose()
     $restoreResponse.Dispose()
 
     $auditEvents = $client.GetStringAsync("$baseUrl/api/database/audit").GetAwaiter().GetResult() | ConvertFrom-Json
-    if (@($auditEvents).Count -lt 3 -or $auditEvents[0].operation -ne "DATABASE_RESTORED") {
+    if (@($auditEvents).Count -lt 4 -or $auditEvents[0].operation -ne "DATABASE_RESTORED") {
         throw "Datenbankänderungen oder Restore wurden nicht im lokalen Verlauf protokolliert."
     }
 
@@ -223,7 +238,7 @@ try {
         throw "Remote-Zugriff blieb trotz fehlendem Zertifikat aktiv."
     }
     $persistedDb = $client.GetStringAsync("$baseUrl/api/database/tracking").GetAwaiter().GetResult() | ConvertFrom-Json
-    if ($persistedDb.revision -ne 3 -or @($persistedDb.records).Count -ne 2) {
+    if ($persistedDb.revision -ne 4 -or @($persistedDb.records).Count -ne 2) {
         throw "SQLite-Datenbank blieb nach Host-Neustart nicht erhalten."
     }
     $listeners = Get-NetTCPConnection -State Listen -OwningProcess $process.Id -ErrorAction SilentlyContinue
