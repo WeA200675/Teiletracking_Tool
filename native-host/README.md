@@ -1,62 +1,50 @@
 # Teiletracking Native Windows Host
 
-Dieser Host stellt den lokalen Webprototyp bereit. Netzwerkzugriff ist standardmäßig deaktiviert.
+Der Host liefert die Weboberfläche aus und speichert Anwendungsdaten lokal in einer SQLite-Datenbank.
 
-## Ziel
+## Aktueller Funktionsumfang
 
-- keine Änderung der PowerShell Execution Policy
-- kein lokal installiertes Python oder Node.js
-- selbstenthaltene Windows-x64-Anwendung
-- integrierter Kestrel-Webserver
-- automatische Erkennung aktiver IPv4-Schnittstellen
-- lokale Konfiguration unter `%LOCALAPPDATA%\Teiletracking\config.json`
-- Control Center nur über Loopback: `http://127.0.0.1:8000/control-center`
-- dauerhafte lokale Sync-Queue und SHA-256-Fallback-Pakete
+- selbstenthaltene Windows-x64-Anwendung mit integriertem Kestrel-Webserver
+- Datenbankdatei unter `%LOCALAPPDATA%\Teiletracking\teiletracking.db`
+- getrennte Tabellen für Anwendungszustand und Tracking-Datensätze
+- transaktionales Speichern der Datensatzliste und Revisionsprüfung gegen parallele Änderungen
+- vorhandene Erfassungs-, Such-, Filter-, Stammdaten-, Import- und Exportfunktionen der Oberfläche
+- keine dauerhafte Speicherung der aufgenommenen Label-Fotos durch die Hauptanwendung
+
+Das ist ein erster lokaler Datenbankstand. Ein eigenständiger Verwaltungsbereich mit Änderungsprotokoll, Konten/Rollen, automatischer Sicherung und Wiederherstellungsablauf ist noch nicht implementiert.
 
 ## Build
 
-Der GitHub-Workflow **Native Windows Build** veröffentlicht eine selbstenthaltene ZIP-Datei. Auf dem Ziel-PC muss kein .NET SDK/Runtime installiert sein.
-
-Für Entwickler:
+Der GitHub-Workflow **Native Windows Build** erstellt ein selbstenthaltenes ZIP. Für den Build lokal wird das .NET 10 SDK benötigt:
 
 ```text
 dotnet publish native-host/Teiletracking.Host.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist
 ```
 
-## Start auf dem Ziel-PC
+Auf dem Ziel-PC muss keine .NET Runtime installiert werden.
 
-ZIP entpacken und `Teiletracking.exe` per Doppelklick starten. Es wird keine PowerShell-Ausführungsrichtlinie geändert. Beim ersten Start öffnet sich das lokale Control Center.
+## Start und Netzwerk
 
-## Netzwerk und Anmeldung
+ZIP entpacken und `Teiletracking.exe` starten. Der Host öffnet das lokale Control Center. Der Standardlistener verwendet ausschließlich `http://127.0.0.1:8000`; damit ist die Anwendung nur auf demselben Rechner erreichbar.
 
-Der sichere Standard ist Loopback-only: HTTP lauscht nur auf `127.0.0.1`. Die bevorzugte Netzwerkschnittstelle bestimmt keine Netzwerkfreigabe.
+Die Einstellung `network.remoteAccessEnabled` ist standardmäßig `false`. Eine eventuell konfigurierte WLAN- oder Netzwerkschnittstelle wird nicht automatisch freigeschaltet. Keine Firewall-, Router-, WLAN- oder Domäneneinstellungen für diese Anwendung eigenmächtig ändern. Eine spätere Nutzung mit mehreren Geräten erfordert zunächst die Freigabe einer konkreten Netzwerk-, Authentifizierungs- und Zertifikatsarchitektur durch die zuständige IT.
 
-Ein Netzwerkzugriff wird nur geöffnet, wenn alle Voraussetzungen erfüllt sind:
+## Datenbank und Übernahme
 
-1. `network.remoteAccessEnabled` ist explizit aktiviert.
-2. HTTPS ist aktiviert und ein gültiges PFX-Zertifikat mit privatem Schlüssel ist vorhanden.
-3. `TEILETRACKING_PFX_PASSWORD` enthält das PFX-Kennwort.
-4. `TEILETRACKING_ACCESS_PASSWORD` ist gesetzt und mindestens 20 Zeichen lang.
-5. Die konfigurierte Netzwerkschnittstelle liefert eine IPv4-Adresse.
+Die SQLite-Datei wird auf einem lokalen Datenträger im Benutzerprofil gespeichert. Sie darf nicht auf ein Netzlaufwerk, einen synchronisierten Ordner oder einen gemeinsam genutzten Ordner verschoben werden. SQLite ist hier als Einzelrechner-Datenbank vorgesehen.
 
-Der entfernte Listener bindet ausschließlich an diese ausgewählte IPv4-Adresse und ausschließlich per HTTPS. Fehlt eine Voraussetzung oder ist das Zertifikat ungültig/abgelaufen, bleibt der Listener geschlossen. HTTP bleibt auf Loopback. Anmeldungen werden pro Quell-IP begrenzt; Sessions sind acht Stunden gültig und verwenden ein HttpOnly-/Secure-/SameSite-Cookie. Schreibende HTTP-Anfragen ohne passende Origin werden abgewiesen. Queue-Eingaben sind größen- und tiefenbegrenzt.
+Die API stellt Stammdaten und Tracking-Datensätze für die bestehende Oberfläche bereit. Beim Speichern der Tracking-Liste wird die Änderung in einer SQLite-Transaktion geschrieben. Eine Revisionsnummer weist veraltete Schreibstände zurück; bei einem Konflikt muss die Oberfläche neu geladen werden.
 
-Zertifikate müssen auf den Smartphones als vertrauenswürdig gelten. Ein beliebiges selbstsigniertes Zertifikat genügt dafür nicht. Das Control Center ist nur lokal erreichbar. Einstellungen werden nach einem Neustart aktiv.
+Vorhandene Browserdaten können über die JSON-Importfunktion der Oberfläche eingespielt werden. Für einen sicheren Übernahmeablauf zuerst exportieren, Datei auf Echtdaten prüfen, importieren und anschließend die Anzahl sowie Stichproben kontrollieren. Das ist noch kein automatischer oder revisionssicherer Migrationsworkflow.
 
-## SharePoint
+## Sicherheit und Compliance
 
-Der Verbindungstest sendet nur eine HEAD-Anfrage über HTTPS, folgt keinen Redirects und ist auf explizit freigegebene Hostnamen begrenzt. Die Hostnamen werden kommasepariert in `TEILETRACKING_SHAREPOINT_ALLOWED_HOSTS` gesetzt.
+- Nur mit synthetischen Testdaten entwickeln, solange keine Freigabe zur Verarbeitung echter Betriebsdaten vorliegt.
+- Das Quellrepository ist öffentlich. Niemals Datenbankdateien, echte Export-/Importpakete, Screenshots mit Echtdaten, personenbezogene Daten, Tokens, Kennwörter oder Zertifikate committen.
+- Auf Loopback gibt es keine getrennte Benutzeranmeldung; Zugriffsschutz basiert auf dem angemeldeten Windows-Benutzer und dessen Geräteschutz.
+- Die SQLite-Datei wird derzeit nicht anwendungsseitig verschlüsselt. Windows-Geräteverschlüsselung und Zugriffsschutz des Benutzerprofils sind durch den Geräteverantwortlichen zu prüfen.
+- Es gibt noch keine automatische Sicherung oder geprüfte Wiederherstellung.
+- Es gibt kein revisionssicheres Änderungsprotokoll und keine Rollen-/Berechtigungsverwaltung in der Anwendung.
+- Aufbewahrungs- und Löschregeln, Klassifizierung, Datenschutz, Security, Betrieb und Drittanbieterabhängigkeiten sind vor produktiver Nutzung zu prüfen.
+- Label-Fotos werden von der Hauptanwendung nicht dauerhaft in SQLite gespeichert. Browserprofile und manuell exportierte Dateien können dennoch lokale Daten enthalten.
 
-Direkte authentifizierte M365-Schreibzugriffe werden nicht vorgetäuscht: Dafür muss die konkrete, vom Unternehmens-Tenant freigegebene Authentifizierung feststehen (z. B. App-Registrierung/Client-ID und Consent). Bis dahin bleiben Datensätze lokal und können als Fallback-Paket exportiert werden. SharePoint bleibt standardmäßig deaktiviert.
-
-## Lokale Daten
-
-Die Queue und Fallback-Pakete liegen unter `%LOCALAPPDATA%\Teiletracking`. Tracking-Datensätze werden im Browserprofil gespeichert und können vertrauliche Gerätewerte enthalten. Der Datenservice enthält IndexedDB-Bildspeicherfunktionen, die die Haupt-App aktuell nicht aufruft; ein Test schützt dieses Verhalten. Browserdaten- und Geräteaufbewahrung bleiben Teil der betrieblichen Lösch- und Datenschutzregelung.
-
-## Datenintegrität
-
-Queue-Schreibvorgänge erfolgen über eine temporäre Datei und anschließendes Ersetzen. Fallback-Pakete enthalten Batch-ID, Zeitstempel und SHA-256 des eingebetteten Payloads. SHA-256 schützt die Integrität, beweist aber keine Urheberschaft.
-
-## Unternehmensumgebung
-
-Windows Firewall, Client-Isolation, Zertifikatsverteilung und Anwendungsfreigaben können zentral durch IT gesteuert sein. Der Host versucht nicht, diese Richtlinien zu umgehen oder Firewall-/Netzwerkeinstellungen eigenmächtig zu verändern. Vor einem Unternehmenseinsatz müssen BMW Security und Betrieb den Authentifizierungs-, Netzwerk-, Zertifikats- und Updatepfad freigeben.
