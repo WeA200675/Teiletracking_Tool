@@ -43,9 +43,16 @@ JsonObject LoadConfig()
         var source = Path.Combine(root, "appsettings.default.json");
         File.Copy(source, configPath, true);
     }
-    return JsonNode.Parse(File.ReadAllText(configPath))!.AsObject();
+    var config = JsonNode.Parse(File.ReadAllText(configPath))!.AsObject();
+    if (config["network"] is JsonObject network) network["remoteAccessEnabled"] = false;
+    return config;
 }
-void SaveConfig(JsonObject cfg) => File.WriteAllText(configPath, cfg.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+void SaveConfig(JsonObject cfg)
+{
+    if (cfg["network"] is JsonObject network) network["remoteAccessEnabled"] = false;
+    cfg.Remove("sharePoint");
+    File.WriteAllText(configPath, cfg.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+}
 void Log(string level, string code, string message)
 {
     var line = $"{DateTimeOffset.Now:O}\t{level}\t{code}\t{message.Replace(Environment.NewLine, " ")}";
@@ -94,7 +101,7 @@ var networkConfig = initial["network"]?.AsObject();
 var httpsConfig = initial["https"]?.AsObject();
 var port = networkConfig?["port"]?.GetValue<int>() ?? 8000;
 var httpsPort = httpsConfig?["port"]?.GetValue<int>() ?? 8443;
-var remoteRequested = networkConfig?["remoteAccessEnabled"]?.GetValue<bool>() ?? false;
+var remoteRequested = false;
 var pfxPath = httpsConfig?["pfxPath"]?.GetValue<string>() ?? "";
 var pfxPassword = Environment.GetEnvironmentVariable("TEILETRACKING_PFX_PASSWORD");
 var remoteBindAddress = FindAddress(initial);
@@ -307,7 +314,7 @@ app.MapPost("/api/auth/logout", (HttpContext ctx) =>
     return Results.Redirect("/login");
 });
 app.MapGet("/health", (RuntimeState state) => Results.Ok(new { status = "ok", version = "0.4.1", startedAt = state.StartedAt }));
-app.MapGet("/api/status", (RuntimeState state) =>
+app.MapGet("/api/status", (RuntimeState state, DatabaseStore database) =>
 {
     var cfg = LoadConfig();
     var ip = FindAddress(cfg);
@@ -320,7 +327,9 @@ app.MapGet("/api/status", (RuntimeState state) =>
         activeIp = ip,
         port = remoteAccessAvailable ? httpsPort : currentPort,
         url = remoteAccessAvailable && ip is not null ? $"https://{ip}:{httpsPort}/prototype/" : null,
-        sharePointMode = cfg["sharePoint"]?["mode"]?.GetValue<string>() ?? "DISABLED",
+        storage = "SQLITE",
+        trackingRecords = database.TrackingCount,
+        databaseRevision = database.Revision,
         pending = q.Count(x => x.Status is "PENDING" or "RETRY_WAIT"),
         errors = q.Count(x => x.Status is "ERROR" or "CONFLICT"),
         synced = q.Count(x => x.Status == "SYNCED"),
@@ -366,6 +375,8 @@ app.MapGet("/api/config", (HttpContext c) =>
     if (!IPAddress.IsLoopback(c.Connection.RemoteIpAddress ?? IPAddress.None)) return Results.StatusCode(403);
     var cfg = LoadConfig();
     if (cfg["https"] is JsonObject h) h["pfxPasswordEnvironmentVariable"] = h["pfxPasswordEnvironmentVariable"]?.GetValue<string>() ?? "TEILETRACKING_PFX_PASSWORD";
+    cfg.Remove("sharePoint");
+    if (cfg["network"] is JsonObject network) network["remoteAccessEnabled"] = false;
     return Results.Ok(cfg);
 });
 app.MapPut("/api/config", async (HttpContext c) =>
@@ -393,6 +404,7 @@ app.MapPut("/api/config", async (HttpContext c) =>
         configuredHttpsPort is < 1024 or > 65535 ||
         configuredPort == configuredHttpsPort)
         return Results.BadRequest(new { error = "HTTP- und HTTPS-Port müssen verschieden und zwischen 1024 und 65535 sein." });
+    if (network is not null) network["remoteAccessEnabled"] = false;
     if ((network?["remoteAccessEnabled"]?.GetValue<bool>() ?? false) &&
         !(https?["enabled"]?.GetValue<bool>() ?? false))
         return Results.BadRequest(new { error = "Remote-Zugriff erfordert HTTPS." });
@@ -401,38 +413,6 @@ app.MapPut("/api/config", async (HttpContext c) =>
     SaveConfig(cfg);
     Log("INFO", "CONFIG-001", "Konfiguration gespeichert. Änderungen werden nach Neustart aktiv.");
     return Results.Ok(new { saved = true, restartRequired = true });
-});
-app.MapPost("/api/sharepoint/test", async () =>
-{
-    var cfg = LoadConfig();
-    var sp = cfg["sharePoint"]!.AsObject();
-    var mode = sp["mode"]?.GetValue<string>() ?? "DISABLED";
-    var site = sp["siteUrl"]?.GetValue<string>() ?? "";
-    if (mode == "DISABLED") return Results.Ok(new { reachable = false, code = "SP-DISABLED", message = "SharePoint ist deaktiviert." });
-    if (!Uri.TryCreate(site, UriKind.Absolute, out var uri) ||
-        uri.Scheme != Uri.UriSchemeHttps || !uri.IsDefaultPort ||
-        !string.IsNullOrEmpty(uri.UserInfo) || IPAddress.TryParse(uri.Host, out _))
-        return Results.BadRequest(new { reachable = false, code = "SP-CONFIG-001", message = "Zulässig ist nur eine HTTPS-Site ohne Zugangsdaten in der URL." });
-
-    var allowedHosts = (Environment.GetEnvironmentVariable("TEILETRACKING_SHAREPOINT_ALLOWED_HOSTS") ?? "")
-        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-        .ToHashSet(StringComparer.OrdinalIgnoreCase);
-    if (allowedHosts.Count == 0 || !allowedHosts.Contains(uri.IdnHost))
-        return Results.StatusCode(StatusCodes.Status403Forbidden);
-
-    try
-    {
-        using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(10) };
-        using var req = new HttpRequestMessage(HttpMethod.Head, uri);
-        var res = await client.SendAsync(req);
-        var reachable = (int)res.StatusCode < 500;
-        return Results.Ok(new { reachable, httpStatus = (int)res.StatusCode, code = reachable ? "SP-NET-OK" : "SP-NET-003", authenticationRequired = res.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden });
-    }
-    catch (Exception ex)
-    {
-        Log("ERROR", "SP-NET-003", "SharePoint-Erreichbarkeit fehlgeschlagen (" + ex.GetType().Name + ").");
-        return Results.Ok(new { reachable = false, code = "SP-NET-003", message = "Erreichbarkeit fehlgeschlagen." });
-    }
 });
 app.MapPost("/api/queue", async (HttpContext c) =>
 {
@@ -644,18 +624,16 @@ small{color:#555}.ok{color:#167c35}.warn{color:#9a5b00}pre{white-space:pre-wrap}
 <label>HTTPS-Port<input id="httpsPort" type="number"></label>
 <label>PFX-Zertifikatspfad<input id="pfx" placeholder="C:\Zertifikate\teiletracking.pfx"></label>
 <small>Das Zertifikat muss auf den Smartphones als vertrauenswürdig gelten. Das Passwort wird nicht gespeichert; es kommt aus TEILETRACKING_PFX_PASSWORD.</small></div>
-<div class="card"><h2>SharePoint</h2>
-<label>Modus<select id="spMode"><option>DISABLED</option><option>MANUAL</option><option>PACKAGE</option><option>AUTO_FALLBACK</option></select></label>
-<label>Site URL<input id="site"></label><label>Client-ID (optional)<input id="client"></label>
-<button onclick="testSp()">Erreichbarkeit testen</button><pre id="spResult"></pre>
-<small>Der Test prüft Netzwerk/HTTP. Eine erfolgreiche Anmeldung wird erst möglich, wenn der Tenant eine Authentifizierung freigibt.</small></div>
+<div class="card"><h2>Lokale Datenbank</h2>
+<p>Speicher: SQLite auf diesem Rechner</p><p>Datei: <code>%LOCALAPPDATA%\Teiletracking\teiletracking.db</code></p>
+<p id="databaseSummary">Datenbankstatus wird geladen …</p>
+<small>Der Listener bleibt auf diesem PC. Für Sicherung und Datenübernahme die Exportfunktionen der Tracking-Oberfläche verwenden. Es gibt noch keine automatische Sicherung.</small></div>
 <div class="card"><button onclick="save()">Konfiguration speichern</button><button onclick="exportQueue()">Fallback-Paket exportieren</button><pre id="result"></pre></div>
 </main><script>
 let cfg;
-async function load(){cfg=await (await fetch('/api/config')).json();netMode.value=cfg.network.mode;cidr.value=cfg.network.preferredNetwork;iface.value=cfg.network.preferredInterface;port.value=cfg.network.port;remoteEnabled.checked=cfg.network.remoteAccessEnabled===true;httpsEnabled.checked=cfg.https.enabled;httpsPort.value=cfg.https.port;pfx.value=cfg.https.pfxPath;spMode.value=cfg.sharePoint.mode;site.value=cfg.sharePoint.siteUrl;client.value=cfg.sharePoint.clientId;await loadStatus();const xs=await(await fetch('/api/interfaces')).json();interfaces.innerHTML=xs.map(x=>'<div><b>'+esc(x.name)+'</b>: '+esc(x.address)+'/'+x.prefixLength+'</div>').join('')}
-async function loadStatus(){const s=await(await fetch('/api/status')).json();status.innerHTML='<div class="grid"><div><b>Version</b><br>'+esc(s.version)+'</div><div><b>Aktive IP</b><br>'+esc(s.activeIp||'keine')+'</div><div><b>Port</b><br>'+s.port+'</div><div><b>Queue</b><br>'+s.pending+' ausstehend / '+s.errors+' Fehler</div></div>'}
-async function save(){cfg.network.mode=netMode.value;cfg.network.preferredNetwork=cidr.value.trim();cfg.network.preferredInterface=iface.value.trim();cfg.network.port=+port.value;cfg.network.remoteAccessEnabled=remoteEnabled.checked;cfg.https.enabled=httpsEnabled.checked;cfg.https.port=+httpsPort.value;cfg.https.pfxPath=pfx.value.trim();cfg.sharePoint.mode=spMode.value;cfg.sharePoint.siteUrl=site.value.trim();cfg.sharePoint.clientId=client.value.trim();result.textContent=JSON.stringify(await(await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(cfg)})).json(),null,2)}
-async function testSp(){spResult.textContent=JSON.stringify(await(await fetch('/api/sharepoint/test',{method:'POST'})).json(),null,2)}
+async function load(){cfg=await (await fetch('/api/config')).json();netMode.value=cfg.network.mode;cidr.value=cfg.network.preferredNetwork;iface.value=cfg.network.preferredInterface;port.value=cfg.network.port;remoteEnabled.checked=false;remoteEnabled.disabled=true;httpsEnabled.checked=cfg.https.enabled;httpsPort.value=cfg.https.port;pfx.value=cfg.https.pfxPath;await loadStatus();const xs=await(await fetch('/api/interfaces')).json();interfaces.innerHTML=xs.map(x=>'<div><b>'+esc(x.name)+'</b>: '+esc(x.address)+'/'+x.prefixLength+'</div>').join('')}
+async function loadStatus(){const s=await(await fetch('/api/status')).json();status.innerHTML='<div class="grid"><div><b>Version</b><br>'+esc(s.version)+'</div><div><b>Listener</b><br>nur lokal</div><div><b>Datensätze</b><br>'+s.trackingRecords+'</div><div><b>Datenbankrevision</b><br>'+s.databaseRevision+'</div></div>';databaseSummary.textContent=s.trackingRecords+' Datensätze · Revision '+s.databaseRevision}
+async function save(){cfg.network.mode=netMode.value;cfg.network.preferredNetwork=cidr.value.trim();cfg.network.preferredInterface=iface.value.trim();cfg.network.port=+port.value;cfg.network.remoteAccessEnabled=false;cfg.https.enabled=httpsEnabled.checked;cfg.https.port=+httpsPort.value;cfg.https.pfxPath=pfx.value.trim();cfg.network.remoteAccessEnabled=false;delete cfg.sharePoint;result.textContent=JSON.stringify(await(await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(cfg)})).json(),null,2)}
 async function exportQueue(){result.textContent=JSON.stringify(await(await fetch('/api/sync/export',{method:'POST'})).json(),null,2)}
 function esc(x){return String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}load();
 </script></body></html>
@@ -664,6 +642,16 @@ function esc(x){return String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;',
 
 sealed class DatabaseStore
 {
+    public int TrackingCount
+    {
+        get
+        {
+            using var connection = Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM tracking_records";
+            return Convert.ToInt32(command.ExecuteScalar());
+        }
+    }
     private readonly string _connectionString;
     private readonly object _gate = new();
     public DatabaseStore(string path)
