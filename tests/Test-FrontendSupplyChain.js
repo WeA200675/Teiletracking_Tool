@@ -23,5 +23,10 @@ assert.match(indexHtml, /\.\/vendor\/jszip-3\.10\.1\.min\.js/);
 assert.doesNotMatch(indexHtml + trainerHtml, /https:\/\/cdn\.jsdelivr\.net\/npm\/(?:jsqr|jszip|zxing-wasm)@/i);
 assert.doesNotMatch(scannerService, /https?:\/\/|createElement\s*\(\s*["']script["']/i);
 assert.match(indexHtml, /https:\/\/cdn\.jsdelivr\.net\/npm\/tesseract\.js@7\.0\.0\/dist\/tesseract\.min\.js/);
+const externalScriptSources = [...(indexHtml + trainerHtml).matchAll(/<script[^>]+src=["'](https?:[^"']+)["']/gi)]
+    .map(match => match[1]);
+assert.deepEqual(externalScriptSources, [
+    "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"
+]);
 
 console.log("Frontend supply-chain guard passed.");
