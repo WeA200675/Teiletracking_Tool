@@ -24,6 +24,8 @@ jobs:
         run: node tests/Test-OcrPrivacy.js
       - name: Run frontend supply-chain guard
         run: node tests/Test-FrontendSupplyChain.js
+      - name: Run database backup encryption tests
+        run: node tests/Test-DatabaseBackup.js
 
   powershell:
     runs-on: ubuntu-latest
