@@ -8,11 +8,11 @@
 - [ ] Keine nicht freigegebenen externen Laufzeit-URLs oder Services eingeführt
 - [ ] Datenschutz-/Speicher-/Löschverhalten geprüft
 - [ ] Threat-/Security-Impact und Authentifizierung/Autorisierung geprüft
-- [ ] GHE Actions/Runner-kompatibel; Actions bleiben auf freigegebene SHAs gepinnt
+- [ ] GitHub Actions/Runner-konform; Actions bleiben auf freigegebene SHAs gepinnt
 
 ## Verifikation
 - [ ] Relevante JavaScript-/PowerShell-Tests erfolgreich
-- [ ] Native Windows Build erfolgreich (auf GHES, falls betroffen)
+- [ ] Native Windows Build erfolgreich
 - [ ] SBOM sowie Lizenz- und Vulnerability-Scan beigefügt/geprüft
 - [ ] Abnahme-/Rollback-Auswirkung dokumentiert
 
