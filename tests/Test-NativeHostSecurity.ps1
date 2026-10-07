@@ -152,7 +152,7 @@ try {
         throw "Gültige Datenbanksicherung konnte nicht geprüft werden (HTTP $([int]$previewResponse.StatusCode))."
     }
     $preview = $previewResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
-    if ($preview.trackingRecords -ne 2 -or $preview.currentTrackingRecords -ne 2 -or $preview.derivate -ne 1 -or $preview.iStufen -ne 1) {
+    if ($preview.trackingRecords -ne 2 -or $preview.currentRevision -ne 2 -or $preview.derivate -ne 1 -or $preview.iStufen -ne 1) {
         throw "Sicherungsvorschau meldet unerwartete Datensatzanzahlen."
     }
     $previewRequest.Dispose()
