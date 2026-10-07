@@ -17,7 +17,7 @@ Die öffentliche Quelle bleibt öffentlich; die Git-Historie und bisherige Verö
 - Native Host-Bindung ist standardmäßig Loopback-only. Ein expliziter Remote-Zugriff bindet nur an die ausgewählte IPv4-Adresse und wird nur mit gültigem PFX, PFX-Kennwort und mindestens 20 Zeichen langem Zugriffspasswort gestartet; andernfalls bleibt der Remote-Listener geschlossen.
 - Remote-Anmeldungen verwenden begrenzte Sessions und fehlgeschlagene Versuche, HttpOnly-/Secure-/SameSite-Cookies, Same-Origin-Prüfung für schreibende Requests und eine Größenbegrenzung für HTTP-Anfragen.
 - Queue-Eingaben werden in Form, Tiefe und Größe geprüft; SharePoint-Erreichbarkeit nutzt HTTPS, folgt keinen Redirects und benötigt eine Host-Allowlist.
-- Sicherheitsheader/CSP wurden gesetzt; ein Inline-Handler der Haupt-App wurde entfernt. Die CSP erlaubt weiterhin jsDelivr als Laufzeitquelle für Fremdbibliotheken.
+- Sicherheitsheader/CSP wurden gesetzt; ein Inline-Handler der Haupt-App wurde entfernt. jsQR und JSZip sind lokal vendort; jsDelivr bleibt derzeit für Tesseract.js, Worker/Core und Sprachdaten zugelassen.
 - Standardkonfiguration und Betriebsdokumentation wurden an die Loopback-Grundlinie angepasst. Datenschutzdokumentation unterscheidet nun die im Browser gespeicherten Tracking-Datensätze von den aktuell nicht persistierten Labelbildern; ein Datenschutztest prüft dies.
 - Diese Härtung wurde noch nicht durch BMW Security geprüft. Der Windows-Build und die vorhandenen Tests müssen nach dem letzten Commit erneut erfolgreich laufen.
 
@@ -36,7 +36,7 @@ Die öffentliche Quelle bleibt öffentlich; die Git-Historie und bisherige Verö
 - [ ] Rechteinhaber und Beschäftigungs-/Auftragskontext für alle Beiträge klären; dokumentierte Übertragung oder Freigabe für BMW einholen.
 - [ ] Keine Lizenzdatei ist im Ausgangsrepository vorhanden. Eine geeignete interne Lizenz-/Nutzungsregelung vom Rechteinhaber und BMW Legal festlegen; keine Lizenz automatisch ergänzen.
 - [ ] Git-Historie und Beiträge auf fremde/übernommene Quellen prüfen. Öffentliche Sichtbarkeit des Repositories ist keine Nutzungslizenz.
-- [ ] Sämtliche Komponenten inventarisieren: Laufzeit-CDNs (`jsqr`, `zxing-wasm`), .NET self-contained Runtime, PnP.PowerShell/SharePoint-Bezug sowie eingebettete oder kopierte Dateien. Exakte Versionen, Herkunft, Lizenztexte/Notices und CVEs in einer SBOM festhalten.
+- [ ] Sämtliche Komponenten inventarisieren: Tesseract.js/Worker/Core/Sprachdaten von jsDelivr, lokal vendorte jsQR 1.4.0 und JSZip 3.10.1, .NET self-contained Runtime, PnP.PowerShell/SharePoint-Bezug sowie eingebettete oder kopierte Dateien. Exakte Versionen, Herkunft, Lizenztexte/Notices und CVEs in einer SBOM festhalten.
 - [ ] BMW OSS/Legal-Freigabe und geforderte Notices/Attribution im Repository ergänzen.
 
 ### 2. Geheimnisse, Daten und Datenschutz
@@ -62,10 +62,11 @@ Die öffentliche Quelle bleibt öffentlich; die Git-Historie und bisherige Verö
 
 ### 4. Drittanbieter-Laufzeitcode
 
-- [ ] `prototype/index.html` und `prototype/label-trainer.html` laden JavaScript/WASM von `cdn.jsdelivr.net`. Das bindet den Betrieb an einen öffentlichen CDN und führt fremden Code zur Laufzeit aus.
-- [ ] BMW-seitig genehmigte Strategie wählen: intern gespiegelt/gescannt und versionsfixiert, freigegebene Paketregistrierung, oder genehmigte Internet-Freigabe. Subresource Integrity allein schützt nur unveränderte Bytes und ersetzt keine OSS-/Netzfreigabe.
-- [ ] Exakte Artefakt-Hashes, Lizenznachweise und Vulnerability Scan dokumentieren. Bei Offlinebetrieb einen geprüften lokalen Fallback bereitstellen.
-- [ ] Keine externen Fonts, Skripte oder sonstige Browser-Endpunkte ohne Netzwerk-/Datenschutzfreigabe zulassen.
+- [x] jsQR 1.4.0 und JSZip 3.10.1 werden aus lokalen, eingecheckten Dateien geladen. Upstream-Blob-IDs und Lizenztexte stehen unter `prototype/vendor/`; ein CI-Test verhindert die Rückkehr zu CDN-Ladevorgängen dieser Pakete.
+- [x] Dynamisches Laden von ZXing-WASM über jsDelivr wurde entfernt. QR-Erkennung nutzt jetzt Browser BarcodeDetector oder lokal geladenes jsQR.
+- [ ] Tesseract.js 7.0.0 sowie Worker, WASM-Core und Sprachdaten werden weiterhin zur Laufzeit von jsDelivr bezogen. Sie sind nicht vollständig lokal gespiegelt oder durch Hashprüfung abgesichert.
+- [ ] BMW-seitig genehmigte Bezugsquelle für Tesseract.js und abhängige Artefakte festlegen: interne Spiegelung oder freigegebene Paketquelle, jeweils mit unveränderlichen Versionen/Hashes, OSS-Notices, SBOM und Vulnerability Scan.
+- [ ] Exakte transitive Komponenten und CVEs für alle Drittanbieterabhängigkeiten prüfen. OSS/Legal muss die Lizenzen der vendorten JSZip- und jsQR-Artefakte freigeben; die Aufnahme von Notices ist keine Nutzungsfreigabe.
 
 ### 5. GHE-Repository und CI-Betrieb
 
